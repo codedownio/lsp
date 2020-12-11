@@ -7,8 +7,9 @@
 module Language.LSP.Types.LspId where
 
 import qualified Data.Aeson                                 as A
-import           Data.Text                                  (Text)
+import           Data.Hashable
 import           Data.IxMap
+import           Data.Text                                  (Text)
 import Language.LSP.Types.Method
 
 -- | Id used for a request, Can be either a String or an Int
@@ -43,3 +44,6 @@ instance Ord SomeLspId where
       go (IdString a) (IdString b) = a `compare` b
       go (IdInt    _) (IdString _) = LT
       go (IdString _) (IdInt    _) = GT
+instance Hashable SomeLspId where
+  hashWithSalt n (SomeLspId (IdInt x)) = hashWithSalt n x
+  hashWithSalt n (SomeLspId (IdString x)) = hashWithSalt n x
