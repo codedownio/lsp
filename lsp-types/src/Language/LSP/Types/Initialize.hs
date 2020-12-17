@@ -51,7 +51,7 @@ makeExtendingDatatype "InitializeParams" [''WorkDoneProgressParams]
   , ("_workspaceFolders",      [t| Maybe (List WorkspaceFolder) |])
   ]
 
-deriveJSON lspOptions ''InitializeParams
+deriveJSON lspOptionsNoOmitNothingFields ''InitializeParams
 
 data InitializeError =
   InitializeError
