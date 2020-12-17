@@ -9,6 +9,7 @@ module Language.LSP.Types.Utils
   , makeExtendingDatatype
   , lspOptions
   , lspOptionsUntagged
+  , lspOptionsNoOmitNothingFields
   ) where
 
 import Control.Monad
@@ -121,3 +122,5 @@ lspOptions = defaultOptions { omitNothingFields = True, fieldLabelModifier = mod
 lspOptionsUntagged :: Options
 lspOptionsUntagged = lspOptions { sumEncoding = UntaggedValue }
 
+lspOptionsNoOmitNothingFields :: Options
+lspOptionsNoOmitNothingFields = lspOptions { omitNothingFields = False }
