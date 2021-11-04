@@ -352,6 +352,7 @@ makeFieldsNoPrefix ''SignatureHelpParameterInformation
 makeFieldsNoPrefix ''SignatureHelpClientCapabilities
 makeFieldsNoPrefix ''SignatureHelpOptions
 makeFieldsNoPrefix ''SignatureHelpRegistrationOptions
+makeFieldsNoPrefix ''SignatureHelpParams
 makeFieldsNoPrefix ''SignatureHelp
 
 -- Static registration
