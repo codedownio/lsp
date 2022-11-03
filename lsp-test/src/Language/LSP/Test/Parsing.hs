@@ -90,7 +90,7 @@ satisfyMaybeM pred = do
     else Just <$> do
       chan <- asks messageChan
       timeout <- asks (messageTimeout . config)
-      liftIO $ forkIO $ do
+      liftIO $ forkIOWithUnmask $ \unmask -> unmask $ do
         threadDelay (timeout * 500000)
         writeChan chan (TimeoutMessage timeoutId)
 
