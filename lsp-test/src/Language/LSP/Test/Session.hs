@@ -284,7 +284,7 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
   withRunInIO $ \runInIO -> do
     let context = SessionContext serverIn absRootDir messageChan timeoutIdVar reqMap initRsp config caps
         initState vfs = SessionState 0 vfs mempty False Nothing mempty mempty
-        runSession' ses = liftIO $ initVFS $ \vfs -> runInIO $ runSessionMonad context (initState vfs) ses
+        runSession'' ses = liftIO $ initVFS $ \vfs -> runInIO $ runSessionMonad context (initState vfs) ses
 
         errorHandler = throwTo mainThreadId :: SessionException -> IO ()
 
@@ -293,7 +293,7 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
         serverAndListenerFinalizer :: ThreadId -> m (Maybe ((), SessionState))
         serverAndListenerFinalizer tid = do
           logDebugN "DOING serverAndListenerFinalizer"
-          finally (timeout (2 * msgTimeoutMs) (runSession' exitServer)) $ do
+          finally (timeout (2 * msgTimeoutMs) (runSession'' exitServer)) $ do
             logDebugN "DONE with initial timeout"
 
             -- Make sure to kill the listener first, before closing
