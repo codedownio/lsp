@@ -291,25 +291,25 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
         msgTimeoutMs = messageTimeout config * 10^6
 
         serverAndListenerFinalizer :: ThreadId -> m (Maybe ((), SessionState))
-        serverAndListenerFinalizer tid = do
-          let cleanup
-                | Just sp <- mServerProc = do
-                    -- Give the server some time to exit cleanly
-                    -- It makes the server hangs in windows so we have to avoid it
-#ifndef mingw32_HOST_OS
-                    timeout msgTimeoutMs (waitForProcess sp)
-#endif
-                    liftIO $ cleanupProcess (Just serverIn, Just serverOut, Nothing, sp)
-                | otherwise = pure ()
-          finally (timeout msgTimeoutMs (runSession' exitServer))
-                  -- Make sure to kill the listener first, before closing
-                  -- handles etc via cleanupProcess
-                  (liftIO (killThread tid >> cleanup))
+        serverAndListenerFinalizer tid =
+          finally (timeout msgTimeoutMs (runSession' exitServer)) $ do
+            -- Make sure to kill the listener first, before closing
+            -- handles etc via cleanupProcess
+            liftIO $ killThread tid
 
-    (result, _) <- bracket (liftIO $ forkIO $ catch (serverHandler serverOut context) errorHandler)
-                           (runInIO . serverAndListenerFinalizer)
-                           (const $ liftIO $ initVFS $ \vfs -> runInIO $ runSessionMonad context (initState vfs) session)
-    return result
+            case mServerProc of
+              Just sp -> do
+                -- Give the server some time to exit cleanly
+                -- It makes the server hangs in windows so we have to avoid it
+#ifndef mingw32_HOST_OS
+                timeout msgTimeoutMs (liftIO $ waitForProcess sp)
+#endif
+                liftIO $ cleanupProcess (Just serverIn, Just serverOut, Nothing, sp)
+              _ -> pure ()
+
+    (fst <$>) $ bracket (liftIO $ forkIO $ catch (serverHandler serverOut context) errorHandler)
+                        (runInIO . serverAndListenerFinalizer)
+                        (const $ liftIO $ initVFS $ \vfs -> runInIO $ runSessionMonad context (initState vfs) session)
 
 updateStateC :: MonadLoggerIO m => ConduitM FromServerMessage FromServerMessage (StateT SessionState (ReaderT SessionContext m)) ()
 updateStateC = awaitForever $ \msg -> do
