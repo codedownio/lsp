@@ -39,6 +39,7 @@ where
 
 import Colog.Core (LogAction (..), WithSeverity (..), Severity (..))
 import Control.Applicative
+import Control.Exception (throw)
 import Control.Lens hiding (List, Empty)
 import Control.Monad
 import Control.Monad.Catch (MonadThrow)
@@ -230,9 +231,9 @@ runSessionMonad context state (Session session) = runReaderT (runStateT conduit 
     handler (Unexpected "ConduitParser.empty") = do
       lastMsg <- fromJust . lastReceivedMessage <$> get
       name <- getParserName
-      liftIO $ throwIO (UnexpectedMessage (T.unpack name) lastMsg)
+      liftIO $ throw (UnexpectedMessage (T.unpack name) lastMsg)
 
-    handler e = liftIO $ throwIO e
+    handler e = throw e
 
     chanSource = do
       msg <- liftIO $ readChan (messageChan context)
@@ -250,7 +251,7 @@ runSessionMonad context state (Session session) = runReaderT (runStateT conduit 
       ServerMessage sMsg -> yield sMsg
       TimeoutMessage tId -> do
         curId <- getCurTimeoutId
-        when (curId == tId) $ lastReceivedMessage <$> get >>= liftIO . throwIO . Timeout
+        when (curId == tId) $ lastReceivedMessage <$> get >>= throw . Timeout
 
 -- | An internal version of 'runSession' that allows for a custom handler to listen to the server.
 -- It also does not automatically send initialize and exit messages.
