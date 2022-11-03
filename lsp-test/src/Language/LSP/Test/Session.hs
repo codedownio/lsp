@@ -320,7 +320,7 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
                 liftIO $ cleanupProcess (Just serverIn, Just serverOut, Nothing, sp)
               _ -> pure ()
 
-    (fst <$>) $ bracket (liftIO $ forkIO $ catch (serverHandler serverOut context) errorHandler)
+    (fst <$>) $ bracket (liftIO $ forkIOWithUnmask $ \unmask -> unmask $ catch (serverHandler serverOut context) errorHandler)
                         (runInIO . serverAndListenerFinalizer)
                         (const $ runInIO $ runSession'' session)
 
