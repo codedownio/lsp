@@ -91,7 +91,7 @@ satisfyMaybeM pred = do
       chan <- asks messageChan
       timeout <- asks (messageTimeout . config)
       liftIO $ forkIO $ do
-        threadDelay (timeout * 1000000)
+        threadDelay (timeout * 500000)
         writeChan chan (TimeoutMessage timeoutId)
 
   x <- Session await
