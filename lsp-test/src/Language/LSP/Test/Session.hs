@@ -252,7 +252,9 @@ runSessionMonad context state (Session session) = runReaderT (runStateT conduit 
 
     watchdog :: ConduitM SessionMessage FromServerMessage (StateT SessionState (ReaderT SessionContext m)) ()
     watchdog = Conduit.awaitForever $ \case
-      ServerMessage sMsg -> yield sMsg
+      ServerMessage sMsg -> do
+        logDebugN ("watchdog got msg: " <> T.pack (show sMsg))
+        yield sMsg
       TimeoutMessage tId -> do
         curId <- getCurTimeoutId
         when (curId == tId) $ lastReceivedMessage <$> get >>= throw . Timeout
@@ -322,6 +324,7 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
 
 updateStateC :: MonadLoggerIO m => ConduitM FromServerMessage FromServerMessage (StateT SessionState (ReaderT SessionContext m)) ()
 updateStateC = awaitForever $ \msg -> do
+  logDebugN ("updateStateC got MSG: " <> T.pack (show msg))
   updateState msg
   respond msg
   yield msg
