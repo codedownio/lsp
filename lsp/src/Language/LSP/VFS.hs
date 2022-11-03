@@ -67,32 +67,32 @@ module Language.LSP.VFS
   , changeChars
   ) where
 
+import           Colog.Core (LogAction (..), WithSeverity (..), Severity (..), (<&))
 import           Control.Lens hiding ( (<.>), parts )
 import           Control.Monad
-import           Colog.Core (LogAction (..), WithSeverity (..), Severity (..), (<&))
 import           Control.Monad.State
 import           Data.Char (isUpper, isAlphaNum)
+import Data.Foldable (traverse_)
+import qualified Data.HashMap.Strict as HashMap
+import           Data.Hashable
+import           Data.Int (Int32)
+import           Data.List
+import qualified Data.Map.Strict as Map
+import           Data.Maybe
+import           Data.Ord
 import           Data.Text ( Text )
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
-import           Data.Int (Int32)
-import           Data.List
-import           Data.Ord
-import qualified Data.HashMap.Strict as HashMap
-import qualified Data.Map.Strict as Map
-import           Data.Maybe
+import           Data.Text.Prettyprint.Doc hiding (line)
 import qualified Data.Text.Rope as URope
 import           Data.Text.Utf16.Rope ( Rope )
 import qualified Data.Text.Utf16.Rope as Rope
-import           Data.Text.Prettyprint.Doc hiding (line)
 import qualified Language.LSP.Types           as J
 import qualified Language.LSP.Types.Lens      as J
-import           System.FilePath
-import           Data.Hashable
 import           System.Directory
+import           System.FilePath
 import           System.IO
 import           System.IO.Temp
-import Data.Foldable (traverse_)
 
 -- ---------------------------------------------------------------------
 {-# ANN module ("hlint: ignore Eta reduce" :: String) #-}
