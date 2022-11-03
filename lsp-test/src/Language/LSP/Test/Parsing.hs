@@ -102,9 +102,15 @@ satisfyMaybeM pred = do
     bumpTimeoutId timeoutId
     liftIO $ killThread tid
 
+  logDebugN "satisfyMaybeM: did kill"
+
   modify $ \s -> s { lastReceivedMessage = Just x }
 
+  logDebugN "satisfyMaybeM: did modify"
+
   res <- pred x
+
+  logDebugN "satisfyMaybeM: did pred"
 
   case res of
     Just a -> do
