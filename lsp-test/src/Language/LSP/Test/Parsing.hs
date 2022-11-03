@@ -94,7 +94,9 @@ satisfyMaybeM pred = do
         threadDelay (timeout * 500000)
         writeChan chan (TimeoutMessage timeoutId)
 
+  logDebugN "satisfyMaybeM: going to await"
   x <- Session await
+  logDebugN ("satisfyMaybeM: await yielded: " <> T.pack (show x))
 
   forM_ mtid $ \tid -> do
     bumpTimeoutId timeoutId
