@@ -286,6 +286,8 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
   withRunInIO $ \runInIO -> do
     let context = SessionContext serverIn absRootDir messageChan timeoutIdVar reqMap initRsp config caps
         initState vfs = SessionState 0 vfs mempty False Nothing mempty mempty
+
+        runSession'' :: Session m b -> m (b, SessionState)
         runSession'' ses = liftIO $ initVFS $ \vfs -> runInIO $ runSessionMonad context (initState vfs) ses
 
         errorHandler = throwTo mainThreadId :: SessionException -> IO ()
@@ -311,7 +313,7 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
 
     (fst <$>) $ bracket (liftIO $ forkIO $ catch (serverHandler serverOut context) errorHandler)
                         (runInIO . serverAndListenerFinalizer)
-                        (const $ liftIO $ initVFS $ \vfs -> runInIO $ runSessionMonad context (initState vfs) session)
+                        (const $ runInIO $ runSession'' session)
 
 updateStateC :: MonadLoggerIO m => ConduitM FromServerMessage FromServerMessage (StateT SessionState (ReaderT SessionContext m)) ()
 updateStateC = awaitForever $ \msg -> do
