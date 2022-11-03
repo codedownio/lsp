@@ -22,6 +22,9 @@ withServer serverExe logStdErr modifyCreateProcess f = do
 
   withRunInIO $ \runInIO ->
     withCreateProcess (modifyCreateProcess createProc) $ \(Just serverIn) (Just serverOut) (Just serverErr) serverProc -> do
+      liftIO $ hSetBuffering serverIn NoBuffering
+      liftIO $ hSetBuffering serverOut NoBuffering
+
       -- Need to continuously consume stderr else it gets blocked
       -- Can't pass NoStream either to std_err
       liftIO $ hSetBuffering serverErr NoBuffering
