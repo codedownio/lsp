@@ -9,6 +9,7 @@
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Language.LSP.Test.Session
   ( Session(..)
@@ -245,11 +246,11 @@ runSessionMonad context state (Session session) = runReaderT (runStateT conduit 
     isLogNotification _ = False
 
     watchdog :: ConduitM SessionMessage FromServerMessage (StateT SessionState (ReaderT SessionContext m)) ()
-    watchdog = Conduit.awaitForever $ \msg -> do
-      curId <- getCurTimeoutId
-      case msg of
-        ServerMessage sMsg -> yield sMsg
-        TimeoutMessage tId -> when (curId == tId) $ lastReceivedMessage <$> get >>= liftIO . throwIO . Timeout
+    watchdog = Conduit.awaitForever $ \case
+      ServerMessage sMsg -> yield sMsg
+      TimeoutMessage tId -> do
+        curId <- getCurTimeoutId
+        when (curId == tId) $ lastReceivedMessage <$> get >>= liftIO . throwIO . Timeout
 
 -- | An internal version of 'runSession' that allows for a custom handler to listen to the server.
 -- It also does not automatically send initialize and exit messages.
