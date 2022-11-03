@@ -291,8 +291,11 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
         msgTimeoutMs = messageTimeout config * 10^6
 
         serverAndListenerFinalizer :: ThreadId -> m (Maybe ((), SessionState))
-        serverAndListenerFinalizer tid =
-          finally (timeout msgTimeoutMs (runSession' exitServer)) $ do
+        serverAndListenerFinalizer tid = do
+          logDebugN "DOING serverAndListenerFinalizer"
+          finally (timeout (2 * msgTimeoutMs) (runSession' exitServer)) $ do
+            logDebugN "DONE with initial timeout"
+
             -- Make sure to kill the listener first, before closing
             -- handles etc via cleanupProcess
             liftIO $ killThread tid
