@@ -29,6 +29,6 @@ withServer serverExe logStdErr modifyCreateProcess f = do
       -- Can't pass NoStream either to std_err
       liftIO $ hSetBuffering serverErr NoBuffering
       liftIO $ hSetBinaryMode serverErr True
-      let errSinkThread = forever $ liftIO (hGetLine serverErr) >>= when logStdErr . logDebugN . T.pack
+      let errSinkThread = forever (liftIO (hGetLine serverErr) >>= when logStdErr . logDebugN . T.pack)
       runInIO $ withAsync errSinkThread $ \_ ->
         f serverIn serverOut serverProc
