@@ -258,7 +258,12 @@ runSessionWithHandles' serverProc serverIn serverOut config' caps rootDir sessio
   where
   -- | Asks the server to shutdown and exit politely
   exitServer :: Session m ()
-  exitServer = request_ SShutdown Empty >> sendNotification SExit Empty
+  exitServer = do
+    logDebugN "DOING request_ SShutdown"
+    request_ SShutdown Empty
+    logDebugN "DOING sendNotification SExit"
+    sendNotification SExit Empty
+    logDebugN "DID sendNotification SExit"
 
   -- | Listens to the server output until the shutdown ACK,
   -- makes sure it matches the record and signals any semaphores
@@ -354,9 +359,11 @@ sendRequest method params = do
   liftIO $ modifyMVar_ reqMap $
     \r -> return $ fromJust $ updateRequestMap r id method
 
+  logDebugN "Going to sendMessage"
   ~() <- case splitClientMethod method of
     IsClientReq -> sendMessage mess
     IsClientEither -> sendMessage $ ReqMess mess
+  logDebugN "Did sendMessage"
 
   return id
 
