@@ -99,8 +99,11 @@ satisfyMaybeM pred = do
   logDebugN ("satisfyMaybeM: await yielded: " <> T.pack (show x))
 
   forM_ mtid $ \tid -> do
+    logDebugN "satisfyMaybeM: doing bumpTimeoutId"
     bumpTimeoutId timeoutId
+    logDebugN "satisfyMaybeM: did bumpTimeoutId"
     liftIO $ killThread tid
+    logDebugN "satisfyMaybeM: did killThread"
 
   logDebugN "satisfyMaybeM: did kill"
 
