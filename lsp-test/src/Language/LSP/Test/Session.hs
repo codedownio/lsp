@@ -8,6 +8,8 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Language.LSP.Test.Session
   ( Session(..)
@@ -35,18 +37,18 @@ module Language.LSP.Test.Session
 
 where
 
+import Colog.Core (LogAction (..), WithSeverity (..), Severity (..))
 import Control.Applicative
-import Control.Concurrent hiding (yield)
-import Control.Exception
+import Control.Exception (throw)
 import Control.Lens hiding (List, Empty)
 import Control.Monad
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Except
-import Control.Monad.IO.Class
 #if __GLASGOW_HASKELL__ == 806
 import Control.Monad.Fail
 #endif
-import Control.Monad.Trans.Class
+import Control.Monad.IO.Unlift
+import Control.Monad.Logger
 import Control.Monad.Trans.Reader (ReaderT, runReaderT)
 import qualified Control.Monad.Trans.Reader as Reader (ask)
 import Control.Monad.Trans.State (StateT, runStateT, execState)
@@ -74,16 +76,17 @@ import Language.LSP.VFS
 import Language.LSP.Test.Compat
 import Language.LSP.Test.Decoding
 import Language.LSP.Test.Exceptions
+import Language.LSP.Test.Process
 import System.Console.ANSI
-import System.Directory
 import System.IO
 import System.Process (ProcessHandle())
-#ifndef mingw32_HOST_OS
-import System.Process (waitForProcess)
-#endif
-import System.Timeout ( timeout )
-import Data.IORef
-import Colog.Core (LogAction (..), WithSeverity (..), Severity (..))
+import UnliftIO.Concurrent hiding (yield, throwTo)
+import UnliftIO.Directory
+import UnliftIO.Exception
+import UnliftIO.IORef
+import qualified System.Timeout as ST
+import UnliftIO.Timeout
+
 
 -- | A session representing one instance of launching and connecting to a server.
 --
@@ -92,14 +95,20 @@ import Colog.Core (LogAction (..), WithSeverity (..), Severity (..))
 -- 'Language.LSP.Test.sendRequest' and
 -- 'Language.LSP.Test.sendNotification'.
 
-newtype Session a = Session (ConduitParser FromServerMessage (StateT SessionState (ReaderT SessionContext IO)) a)
-  deriving (Functor, Applicative, Monad, MonadIO, Alternative, MonadThrow)
+newtype Session m a = Session (ConduitParser FromServerMessage (StateT SessionState (ReaderT SessionContext m)) a)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadLogger, MonadLoggerIO, Alternative, MonadThrow)
+
+instance MonadLogger m => MonadLogger (ConduitParser FromServerMessage m) where
+  monadLoggerLog loc src level msg = lift $ monadLoggerLog loc src level msg
+
+instance MonadLoggerIO m => MonadLoggerIO (ConduitParser FromServerMessage m) where
+  askLoggerIO = lift askLoggerIO
 
 #if __GLASGOW_HASKELL__ >= 806
-instance MonadFail Session where
+instance MonadIO m => MonadFail (Session m) where
   fail s = do
     lastMsg <- fromJust . lastReceivedMessage <$> get
-    liftIO $ throw (UnexpectedMessage s lastMsg)
+    liftIO $ throwIO (UnexpectedMessage s lastMsg)
 #endif
 
 -- | Stuff you can configure for a 'Session'.
@@ -152,7 +161,7 @@ class Monad m => HasReader r m where
   asks :: (r -> b) -> m b
   asks f = f <$> ask
 
-instance HasReader SessionContext Session where
+instance Monad m => HasReader SessionContext (Session m) where
   ask  = Session (lift $ lift Reader.ask)
 
 instance Monad m => HasReader r (ConduitM a b (StateT s (ReaderT r m))) where
@@ -195,7 +204,7 @@ class Monad m => HasState s m where
   modifyM :: (HasState s m, Monad m) => (s -> m s) -> m ()
   modifyM f = get >>= f >>= put
 
-instance HasState SessionState Session where
+instance Monad m => HasState SessionState (Session m) where
   get = Session (lift State.get)
   put = Session . lift . State.put
 
@@ -213,9 +222,10 @@ instance (Monad m, (HasState s m)) => HasState s (ConduitParser a m)
   get = lift get
   put = lift . put
 
-runSessionMonad :: SessionContext -> SessionState -> Session a -> IO (a, SessionState)
+runSessionMonad :: forall m a. (MonadLoggerIO m, MonadThrow m) => SessionContext -> SessionState -> Session m a -> m (a, SessionState)
 runSessionMonad context state (Session session) = runReaderT (runStateT conduit state) context
   where
+    conduit :: StateT SessionState (ReaderT SessionContext m) a
     conduit = runConduit $ chanSource .| watchdog .| updateStateC .| runConduitParser (catchError session handler)
 
     handler (Unexpected "ConduitParser.empty") = do
@@ -236,77 +246,80 @@ runSessionMonad context state (Session session) = runReaderT (runStateT conduit 
     isLogNotification (ServerMessage (FromServerMess SWindowShowDocument _)) = True
     isLogNotification _ = False
 
-    watchdog :: ConduitM SessionMessage FromServerMessage (StateT SessionState (ReaderT SessionContext IO)) ()
-    watchdog = Conduit.awaitForever $ \msg -> do
-      curId <- getCurTimeoutId
-      case msg of
-        ServerMessage sMsg -> yield sMsg
-        TimeoutMessage tId -> when (curId == tId) $ lastReceivedMessage <$> get >>= throw . Timeout
+    watchdog :: ConduitM SessionMessage FromServerMessage (StateT SessionState (ReaderT SessionContext m)) ()
+    watchdog = Conduit.awaitForever $ \case
+      ServerMessage sMsg -> yield sMsg
+      TimeoutMessage tId -> do
+        curId <- getCurTimeoutId
+        when (curId == tId) $ (lastReceivedMessage <$> get) >>= throw . Timeout
 
 -- | An internal version of 'runSession' that allows for a custom handler to listen to the server.
 -- It also does not automatically send initialize and exit messages.
-runSession' :: Handle -- ^ Server in
+runSession' :: forall m a. (MonadLoggerIO m, MonadUnliftIO m, MonadThrow m)
+            => Handle -- ^ Server in
             -> Handle -- ^ Server out
             -> Maybe ProcessHandle -- ^ Server process
             -> (Handle -> SessionContext -> IO ()) -- ^ Server listener
             -> SessionConfig
             -> ClientCapabilities
             -> FilePath -- ^ Root directory
-            -> Session () -- ^ To exit the Server properly
-            -> Session a
-            -> IO a
+            -> Session m () -- ^ To exit the Server properly
+            -> Session m a
+            -> m a
 runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exitServer session = do
   absRootDir <- canonicalizePath rootDir
 
-  hSetBuffering serverIn  NoBuffering
-  hSetBuffering serverOut NoBuffering
+  liftIO $ hSetBuffering serverIn  NoBuffering
+  liftIO $ hSetBuffering serverOut NoBuffering
   -- This is required to make sure that we don’t get any
   -- newline conversion or weird encoding issues.
-  hSetBinaryMode serverIn True
-  hSetBinaryMode serverOut True
+  liftIO $ hSetBinaryMode serverIn True
+  liftIO $ hSetBinaryMode serverOut True
 
   reqMap <- newMVar newRequestMap
   messageChan <- newChan
   timeoutIdVar <- newIORef 0
   initRsp <- newEmptyMVar
 
-  mainThreadId <- myThreadId
+  mainThreadId <- liftIO myThreadId
 
-  let context = SessionContext serverIn absRootDir messageChan timeoutIdVar reqMap initRsp config caps
-      initState vfs = SessionState 0 vfs mempty False Nothing mempty mempty
-      runSession' ses = initVFS $ \vfs -> runSessionMonad context (initState vfs) ses
+  withRunInIO $ \runInIO -> do
+    let context = SessionContext serverIn absRootDir messageChan timeoutIdVar reqMap initRsp config caps
+        initState vfs = SessionState 0 vfs mempty False Nothing mempty mempty
 
-      errorHandler = throwTo mainThreadId :: SessionException -> IO ()
-      serverListenerLauncher =
-        forkIO $ catch (serverHandler serverOut context) errorHandler
-      msgTimeoutMs = messageTimeout config * 10^6
-      serverAndListenerFinalizer tid = do
-        let cleanup
-              | Just sp <- mServerProc = do
-                  -- Give the server some time to exit cleanly
-                  -- It makes the server hangs in windows so we have to avoid it
-#ifndef mingw32_HOST_OS
-                  timeout msgTimeoutMs (waitForProcess sp)
-#endif
-                  cleanupProcess (Just serverIn, Just serverOut, Nothing, sp)
-              | otherwise = pure ()
-        finally (timeout msgTimeoutMs (runSession' exitServer))
-                -- Make sure to kill the listener first, before closing
-                -- handles etc via cleanupProcess
-                (killThread tid >> cleanup)
+        runSession'' :: Session m b -> m (b, SessionState)
+        runSession'' ses = liftIO $ initVFS $ \vfs -> runInIO $ runSessionMonad context (initState vfs) ses
 
-  (result, _) <- bracket serverListenerLauncher
-                         serverAndListenerFinalizer
-                         (const $ initVFS $ \vfs -> runSessionMonad context (initState vfs) session)
-  return result
+        errorHandler = throwTo mainThreadId :: SessionException -> IO ()
 
-updateStateC :: ConduitM FromServerMessage FromServerMessage (StateT SessionState (ReaderT SessionContext IO)) ()
+        msgTimeoutUs = messageTimeout config * 10^6
+
+        serverAndListenerFinalizer :: ThreadId -> m (Maybe ((), SessionState))
+        serverAndListenerFinalizer tid =
+          finally (timeout msgTimeoutUs (runSession'' exitServer)) $ do
+            -- Make sure to kill the listener first, before closing
+            -- handles etc via cleanupProcess
+            liftIO $ killThread tid
+
+            case mServerProc of
+              Just sp -> do
+                -- Give the server some time to exit cleanly
+                -- It makes the server hangs in windows so we have to avoid it
+                gracefullyWaitForProcess msgTimeoutUs sp
+                liftIO $ cleanupProcess (Just serverIn, Just serverOut, Nothing, sp)
+              _ -> pure ()
+
+    (fst <$>) $ bracket (liftIO $ forkIOWithUnmask $ \unmask -> unmask $ catch (serverHandler serverOut context) errorHandler)
+                        (runInIO . serverAndListenerFinalizer)
+                        (const $ runInIO $ runSession'' session)
+
+updateStateC :: MonadLoggerIO m => ConduitM FromServerMessage FromServerMessage (StateT SessionState (ReaderT SessionContext m)) ()
 updateStateC = awaitForever $ \msg -> do
   updateState msg
   respond msg
   yield msg
   where
-    respond :: (MonadIO m, HasReader SessionContext m) => FromServerMessage -> m ()
+    respond :: (MonadLoggerIO m, HasReader SessionContext m) => FromServerMessage -> m ()
     respond (FromServerMess SWindowWorkDoneProgressCreate req) =
       sendMessage $ ResponseMessage "2.0" (Just $ req ^. LSP.id) (Right Empty)
     respond (FromServerMess SWorkspaceApplyEdit r) = do
@@ -322,7 +335,7 @@ documentChangeUri (InR (InL x)) = x ^. uri
 documentChangeUri (InR (InR (InL x))) = x ^. oldUri
 documentChangeUri (InR (InR (InR x))) = x ^. uri
 
-updateState :: (MonadIO m, HasReader SessionContext m, HasState SessionState m)
+updateState :: (MonadLoggerIO m, HasReader SessionContext m, HasState SessionState m)
             => FromServerMessage -> m ()
 updateState (FromServerMess SProgress req) = case req ^. params . value of
   Begin _ ->
@@ -440,21 +453,21 @@ updateState (FromServerMess SWorkspaceApplyEdit r) = do
                               in DidChangeTextDocumentParams (head params ^. textDocument) (List events)
 updateState _ = return ()
 
-sendMessage :: (MonadIO m, HasReader SessionContext m, ToJSON a) => a -> m ()
+sendMessage :: (MonadLoggerIO m, HasReader SessionContext m, ToJSON a) => a -> m ()
 sendMessage msg = do
   h <- serverIn <$> ask
   logMsg LogClient msg
-  liftIO $ B.hPut h (addHeader $ encode msg) `catch` (throw . MessageSendError (toJSON msg))
+  liftIO $ B.hPut h (addHeader $ encode msg) `catch` (liftIO . throwIO . MessageSendError (toJSON msg))
 
 -- | Execute a block f that will throw a 'Language.LSP.Test.Exception.Timeout' exception
 -- after duration seconds. This will override the global timeout
 -- for waiting for messages to arrive defined in 'SessionConfig'.
-withTimeout :: Int -> Session a -> Session a
+withTimeout :: MonadIO m => Int -> Session m a -> Session m a
 withTimeout duration f = do
   chan <- asks messageChan
   timeoutId <- getCurTimeoutId
   modify $ \s -> s { overridingTimeout = True }
-  tid <- liftIO $ forkIO $ do
+  tid <- liftIO $ forkIOWithUnmask $ \unmask -> unmask $ do
     threadDelay (duration * 1000000)
     writeChan chan (TimeoutMessage timeoutId)
   res <- f
@@ -467,15 +480,15 @@ data LogMsgType = LogServer | LogClient
   deriving Eq
 
 -- | Logs the message if the config specified it
-logMsg :: (ToJSON a, MonadIO m, HasReader SessionContext m)
+logMsg :: (ToJSON a, MonadLoggerIO m, HasReader SessionContext m)
        => LogMsgType -> a -> m ()
 logMsg t msg = do
   shouldLog <- asks $ logMessages . config
   shouldColor <- asks $ logColor . config
-  liftIO $ when shouldLog $ do
-    when shouldColor $ setSGR [SetColor Foreground Dull color]
-    putStrLn $ arrow ++ showPretty msg
-    when shouldColor $ setSGR [Reset]
+  when shouldLog $ do
+    -- when shouldColor $ setSGR [SetColor Foreground Dull color]
+    logDebugN $ T.pack (arrow ++ showPretty msg)
+    -- when shouldColor $ setSGR [Reset]
 
   where arrow
           | t == LogServer  = "<-- "
