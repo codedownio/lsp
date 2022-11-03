@@ -135,10 +135,10 @@ import Language.LSP.Test.Session
 import Language.LSP.Test.Server
 import System.Environment
 import System.IO
-import UnliftIO.Directory
 import System.FilePath
 import System.Process (ProcessHandle, CreateProcess)
 import qualified System.FilePath.Glob as Glob
+import UnliftIO.Directory
 
 -- | Starts a new session.
 --
