@@ -236,6 +236,7 @@ runSessionMonad context state (Session session) = runReaderT (runStateT conduit 
 
     chanSource = do
       msg <- liftIO $ readChan (messageChan context)
+      logDebugN ("GOT MSG: " <> T.pack (show msg))
       unless (ignoreLogNotifications (config context) && isLogNotification msg) $
         yield msg
       chanSource
