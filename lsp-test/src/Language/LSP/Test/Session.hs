@@ -483,7 +483,7 @@ withTimeout duration f = do
   chan <- asks messageChan
   timeoutId <- getCurTimeoutId
   modify $ \s -> s { overridingTimeout = True }
-  tid <- liftIO $ forkIO $ do
+  tid <- liftIO $ forkIOWithUnmask $ \unmask -> unmask $ do
     threadDelay (duration * 1000000)
     writeChan chan (TimeoutMessage timeoutId)
   res <- f
