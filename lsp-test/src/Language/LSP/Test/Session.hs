@@ -224,7 +224,7 @@ runSessionMonad :: forall m a. (MonadLoggerIO m, MonadThrow m) => SessionContext
 runSessionMonad context state (Session session) = runReaderT (runStateT conduit state) context
   where
     conduit :: StateT SessionState (ReaderT SessionContext m) a
-    conduit = runConduit $ chanSource .| watchdog .| updateStateC .| runConduitParser session -- @(StateT SessionState (ReaderT SessionContext m)) (catchError session handler)
+    conduit = runConduit $ chanSource .| watchdog .| updateStateC .| runConduitParser (catchError session handler)
 
     handler (Unexpected "ConduitParser.empty") = do
       lastMsg <- fromJust . lastReceivedMessage <$> get
