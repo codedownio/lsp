@@ -457,8 +457,11 @@ updateState _ = return ()
 sendMessage :: (MonadLoggerIO m, HasReader SessionContext m, ToJSON a) => a -> m ()
 sendMessage msg = do
   h <- serverIn <$> ask
+  logDebugN "In sendMessage, about to logMsg"
   logMsg LogClient msg
+  logDebugN "In sendMessage, did logMsg"
   liftIO $ B.hPut h (addHeader $ encode msg) `catch` (liftIO . throwIO . MessageSendError (toJSON msg))
+  logDebugN "In sendMessage, did hPut"
 
 -- | Execute a block f that will throw a 'Language.LSP.Test.Exception.Timeout' exception
 -- after duration seconds. This will override the global timeout
