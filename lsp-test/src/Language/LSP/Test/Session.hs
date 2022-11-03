@@ -303,7 +303,7 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
         serverAndListenerFinalizer :: ThreadId -> m (Maybe ((), SessionState))
         serverAndListenerFinalizer tid = do
           logDebugN "DOING serverAndListenerFinalizer"
-          finally (timeout (2 * msgTimeoutMs) (runSession'' exitServer)) $ do
+          finally (timeout (2 * msgTimeoutMs) (logDebugN "Doing runSession'' exitServer" >> runSession'' exitServer)) $ do
             logDebugN "DONE with initial timeout"
 
             -- Make sure to kill the listener first, before closing
