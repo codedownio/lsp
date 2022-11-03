@@ -329,6 +329,7 @@ updateStateC = awaitForever $ \msg -> do
   logDebugN ("updateStateC got MSG: " <> T.pack (show msg))
   updateState msg
   respond msg
+  logDebugN "updateStateC yielding MSG"
   yield msg
   where
     respond :: (MonadLoggerIO m, HasReader SessionContext m) => FromServerMessage -> m ()
