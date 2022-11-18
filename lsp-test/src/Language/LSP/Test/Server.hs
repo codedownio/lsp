@@ -17,7 +17,12 @@ withServer serverExe logStdErr modifyCreateProcess f = do
   -- TODO Probably should just change runServer to accept
   -- separate command and arguments
   let cmd:args = words serverExe
-  let createProc = (proc cmd args) { std_in = CreatePipe, std_out = CreatePipe, std_err = CreatePipe }
+  let createProc = (proc cmd args) {
+        std_in = CreatePipe
+        , std_out = CreatePipe
+        , std_err = CreatePipe
+        , create_group = True
+        }
 
   withCreateProcess (modifyCreateProcess createProc) $ \(Just serverIn) (Just serverOut) (Just serverErr) serverProc -> do
     -- Need to continuously consume stderr else it gets blocked

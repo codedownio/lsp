@@ -59,6 +59,7 @@ library
                      , mtl < 2.4
                      , parser-combinators >= 1.2
                      , process >= 1.6
+                     , retry
                      , text
                      , transformers
                      , unliftio
@@ -74,6 +75,7 @@ library
                        Language.LSP.Test.Exceptions
                        Language.LSP.Test.Files
                        Language.LSP.Test.Parsing
+                       Language.LSP.Test.Process
                        Language.LSP.Test.Server
                        Language.LSP.Test.Session
   ghc-options:         -W

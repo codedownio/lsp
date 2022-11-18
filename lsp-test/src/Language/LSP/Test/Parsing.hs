@@ -81,7 +81,6 @@ satisfyMaybe pred = satisfyMaybeM (pure . pred)
 
 satisfyMaybeM :: MonadLoggerIO m => (FromServerMessage -> Session m (Maybe a)) -> Session m a
 satisfyMaybeM pred = do
-
   skipTimeout <- overridingTimeout <$> get
   timeoutId <- getCurTimeoutId
   mtid <-
@@ -90,16 +89,11 @@ satisfyMaybeM pred = do
     else Just <$> do
       chan <- asks messageChan
       timeout <- asks (messageTimeout . config)
-      logDebugN (T.pack ("satisfyMaybeM: using timeout " <> show timeout))
       liftIO $ forkIOWithUnmask $ \unmask -> unmask $ do
-        putStrLn "DOING THREAD DELAY IN SATISFYMAYBEM"
         threadDelay (timeout * 1000000)
-        putStrLn "FINISHED THREAD DELAY IN SATISFYMAYBEM"
         writeChan chan (TimeoutMessage timeoutId)
 
-  logDebugN "satisfyMaybeM: doing session await"
   x <- Session await
-  logDebugN "satisfyMaybeM: did session await"
 
   forM_ mtid $ \tid -> do
     bumpTimeoutId timeoutId
