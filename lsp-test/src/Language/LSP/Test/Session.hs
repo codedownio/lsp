@@ -292,11 +292,11 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
 
         errorHandler = throwTo mainThreadId :: SessionException -> IO ()
 
-        msgTimeoutMs = messageTimeout config * 10^6
+        msgTimeoutUs = messageTimeout config * 10^6
 
         serverAndListenerFinalizer :: ThreadId -> m (Maybe ((), SessionState))
         serverAndListenerFinalizer tid =
-          finally (timeout msgTimeoutMs (runSession'' exitServer)) $ do
+          finally (timeout msgTimeoutUs (runSession'' exitServer)) $ do
             -- Make sure to kill the listener first, before closing
             -- handles etc via cleanupProcess
             liftIO $ killThread tid
@@ -306,7 +306,7 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
                 -- Give the server some time to exit cleanly
                 -- It makes the server hangs in windows so we have to avoid it
 #ifndef mingw32_HOST_OS
-                timeout msgTimeoutMs (liftIO $ waitForProcess sp)
+                timeout msgTimeoutUs (liftIO $ waitForProcess sp)
 #endif
                 liftIO $ cleanupProcess (Just serverIn, Just serverOut, Nothing, sp)
               _ -> pure ()
