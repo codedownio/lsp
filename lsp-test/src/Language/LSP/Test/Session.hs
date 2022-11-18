@@ -83,6 +83,7 @@ import UnliftIO.Concurrent hiding (yield, throwTo)
 import UnliftIO.Directory
 import UnliftIO.Exception
 import UnliftIO.IORef
+import qualified System.Timeout as ST
 import UnliftIO.Timeout
 
 #ifndef mingw32_HOST_OS
@@ -235,7 +236,9 @@ runSessionMonad context state (Session session) = runReaderT (runStateT conduit 
       name <- getParserName
       liftIO $ throw (UnexpectedMessage (T.unpack name) lastMsg)
 
-    handler e = throw e
+    handler e = do
+      liftIO $ putStrLn ("HANDLER GOT EXCEPTION: " <> show e)
+      throw e
 
     chanSource = do
       msg <- liftIO $ readChan (messageChan context)
@@ -252,7 +255,9 @@ runSessionMonad context state (Session session) = runReaderT (runStateT conduit 
     watchdog = Conduit.awaitForever $ \case
       ServerMessage sMsg -> yield sMsg
       TimeoutMessage tId -> do
+        liftIO $ putStrLn "watchdog: got TimeoutMessage"
         curId <- getCurTimeoutId
+        liftIO $ putStrLn ("watchdog: curId = " <> show curId)
         when (curId == tId) $ (lastReceivedMessage <$> get) >>= throw . Timeout
 
 -- | An internal version of 'runSession' that allows for a custom handler to listen to the server.
@@ -299,19 +304,28 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
         serverAndListenerFinalizer :: ThreadId -> m (Maybe ((), SessionState))
         serverAndListenerFinalizer tid =
           finally (timeout msgTimeoutUs (runSession'' exitServer)) $ do
+            liftIO $ putStrLn "serverAndListenerFinalizer: DOING CLEANUP"
+
             -- Make sure to kill the listener first, before closing
             -- handles etc via cleanupProcess
             liftIO $ killThread tid
+
+            liftIO $ putStrLn "serverAndListenerFinalizer: did killThread"
 
             case mServerProc of
               Just sp -> do
                 -- Give the server some time to exit cleanly
                 -- It makes the server hangs in windows so we have to avoid it
 #ifndef mingw32_HOST_OS
-                timeout msgTimeoutUs (liftIO $ waitForProcess sp)
+                liftIO $ putStrLn ("serverAndListenerFinalizer: doing waitForProcess: " <> show msgTimeoutUs)
+                liftIO $ ST.timeout msgTimeoutUs (liftIO $ waitForProcess sp)
 #endif
+                liftIO $ putStrLn "serverAndListenerFinalizer: doing cleanupProcess"
                 liftIO $ cleanupProcess (Just serverIn, Just serverOut, Nothing, sp)
-              _ -> pure ()
+                liftIO $ putStrLn "serverAndListenerFinalizer: did cleanupProcess"
+              _ -> do
+                liftIO $ putStrLn "serverAndListenerFinalizer: no process to clean up"
+                pure ()
 
     (fst <$>) $ bracket (liftIO $ forkIOWithUnmask $ \unmask -> unmask $ catch (serverHandler serverOut context) errorHandler)
                         (runInIO . serverAndListenerFinalizer)
