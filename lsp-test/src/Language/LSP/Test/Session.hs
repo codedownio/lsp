@@ -253,7 +253,7 @@ runSessionMonad context state (Session session) = runReaderT (runStateT conduit 
       ServerMessage sMsg -> yield sMsg
       TimeoutMessage tId -> do
         curId <- getCurTimeoutId
-        when (curId == tId) $ lastReceivedMessage <$> get >>= throw . Timeout
+        when (curId == tId) $ (lastReceivedMessage <$> get) >>= throw . Timeout
 
 -- | An internal version of 'runSession' that allows for a custom handler to listen to the server.
 -- It also does not automatically send initialize and exit messages.
