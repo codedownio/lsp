@@ -79,14 +79,16 @@ import Language.LSP.Test.Exceptions
 import System.Console.ANSI
 import System.IO
 import System.Process (ProcessHandle())
-#ifndef mingw32_HOST_OS
-import System.Process (waitForProcess)
-#endif
 import UnliftIO.Concurrent hiding (yield, throwTo)
 import UnliftIO.Directory
 import UnliftIO.Exception
 import UnliftIO.IORef
 import UnliftIO.Timeout
+
+#ifndef mingw32_HOST_OS
+import System.Process (waitForProcess)
+#endif
+
 
 -- | A session representing one instance of launching and connecting to a server.
 --
