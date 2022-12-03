@@ -149,7 +149,7 @@ import UnliftIO.Directory
 -- >       params = TextDocumentPositionParams doc
 -- >   hover <- request STextdocumentHover params
 runSession :: (MonadLoggerIO m, MonadUnliftIO m, MonadThrow m)
-           => String -- ^ The command to run the server.
+           => CreateProcess -- ^ The command to run the server.
            -> C.ClientCapabilities -- ^ The capabilities that the client should declare.
            -> FilePath -- ^ The filepath to the root directory for the session.
            -> Session m a -- ^ The session to run.
@@ -159,7 +159,7 @@ runSession = runSessionWithConfig def
 -- | Starts a new session with a custom configuration.
 runSessionWithConfig :: (MonadLoggerIO m, MonadUnliftIO m, MonadThrow m)
                      => SessionConfig -- ^ Configuration options for the session.
-                     -> String -- ^ The command to run the server.
+                     -> CreateProcess -- ^ The command to run the server.
                      -> C.ClientCapabilities -- ^ The capabilities that the client should declare.
                      -> FilePath -- ^ The filepath to the root directory for the session.
                      -> Session m a -- ^ The session to run.
@@ -170,7 +170,7 @@ runSessionWithConfig = runSessionWithConfigCustomProcess id
 runSessionWithConfigCustomProcess :: (MonadLoggerIO m, MonadUnliftIO m, MonadThrow m)
                                   => (CreateProcess -> CreateProcess) -- ^ Tweak the 'CreateProcess' used to start the server.
                                   -> SessionConfig -- ^ Configuration options for the session.
-                                  -> String -- ^ The command to run the server.
+                                  -> CreateProcess -- ^ The base CreateProcess run the server.
                                   -> C.ClientCapabilities -- ^ The capabilities that the client should declare.
                                   -> FilePath -- ^ The filepath to the root directory for the session.
                                   -> Session m a -- ^ The session to run.
@@ -225,7 +225,7 @@ runSessionWithHandles' serverProc serverIn serverOut config' caps rootDir sessio
                                           (JustN $ filePathToUri absRootDir)
                                           (lspConfig config')
                                           caps
-                                          (Just TraceOff)
+                                          (Just TraceVerbose)
                                           (maybeN (List <$> initialWorkspaceFolders config))
   runSession' serverIn serverOut serverProc listenServer config caps rootDir exitServer $ do
     -- Wrap the session around initialize and shutdown calls
