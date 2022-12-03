@@ -12,12 +12,9 @@ import UnliftIO.Process
 
 withServer :: (
   MonadLoggerIO m, MonadUnliftIO m
-  ) => String -> Bool -> (CreateProcess -> CreateProcess) -> (Handle -> Handle -> ProcessHandle -> m a) -> m a
-withServer serverExe logStdErr modifyCreateProcess f = do
-  -- TODO Probably should just change runServer to accept
-  -- separate command and arguments
-  let cmd:args = words serverExe
-  let createProc = (proc cmd args) {
+  ) => CreateProcess -> Bool -> (CreateProcess -> CreateProcess) -> (Handle -> Handle -> ProcessHandle -> m a) -> m a
+withServer baseCreateProcess logStdErr modifyCreateProcess f = do
+  let createProc = baseCreateProcess {
         std_in = CreatePipe
         , std_out = CreatePipe
         , std_err = CreatePipe
