@@ -48,8 +48,8 @@ getHeaders h = do
   let (name, val) = span (/= ':') l
   if null val then return [] else ((name, drop 2 val) :) <$> getHeaders h
   where eofHandler e
-          | isEOFError e = throw UnexpectedServerTermination
-          | otherwise = throw e
+          | isEOFError e = throwIO UnexpectedServerTermination
+          | otherwise = throwIO e
 
 type RequestMap = IxMap LspId (SMethod :: Method FromClient Request -> Type )
 
