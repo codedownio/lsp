@@ -69,7 +69,7 @@ import Data.Maybe
 import Data.Function
 import Language.LSP.Types.Capabilities
 import Language.LSP.Types
-import Language.LSP.Types.Lens
+import Language.LSP.Types.Lens hiding (cancel)
 import qualified Language.LSP.Types.Lens as LSP
 import Language.LSP.VFS
 import Language.LSP.Test.Compat
@@ -79,6 +79,7 @@ import Language.LSP.Test.Process
 import System.Console.ANSI
 import System.IO
 import System.Process (ProcessHandle())
+import UnliftIO.Async
 import UnliftIO.Concurrent hiding (yield, throwTo)
 import UnliftIO.Directory
 import UnliftIO.Exception
@@ -279,8 +280,6 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
   timeoutIdVar <- newIORef 0
   initRsp <- newEmptyMVar
 
-  mainThreadId <- liftIO myThreadId
-
   withRunInIO $ \runInIO -> do
     let context = SessionContext serverIn absRootDir messageChan timeoutIdVar reqMap initRsp config caps
         initState vfs = SessionState 0 vfs mempty False Nothing mempty mempty
@@ -288,16 +287,14 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
         runSession'' :: Session m b -> m (b, SessionState)
         runSession'' ses = liftIO $ initVFS $ \vfs -> runInIO $ runSessionMonad context (initState vfs) ses
 
-        errorHandler = throwTo mainThreadId :: SessionException -> IO ()
-
         msgTimeoutUs = messageTimeout config * 10^6
 
-        serverAndListenerFinalizer :: ThreadId -> m (Maybe ((), SessionState))
-        serverAndListenerFinalizer tid =
+        serverAndListenerFinalizer :: Async b -> m (Maybe ((), SessionState))
+        serverAndListenerFinalizer asy = do
           finally (timeout msgTimeoutUs (runSession'' exitServer)) $ do
             -- Make sure to kill the listener first, before closing
             -- handles etc via cleanupProcess
-            liftIO $ killThread tid
+            cancel asy
 
             case mServerProc of
               Just sp -> do
@@ -307,9 +304,15 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
                 liftIO $ cleanupProcess (Just serverIn, Just serverOut, Nothing, sp)
               _ -> pure ()
 
-    (fst <$>) $ bracket (liftIO $ forkIOWithUnmask $ \unmask -> unmask $ catch (serverHandler serverOut context) errorHandler)
-                        (runInIO . serverAndListenerFinalizer)
-                        (const $ runInIO $ runSession'' session)
+    (fst <$>) $ runInIO $ withAsyncWithUnmask (\unmask -> unmask (liftIO (serverHandler serverOut context))) $ \asy ->
+      flip finally (serverAndListenerFinalizer asy) $ do
+        -- If either the server handler or the session throw an exception, rethrow it synchronously
+        sessionAsy <- async $ runSession'' session
+        waitEitherCatch asy sessionAsy >>= \case
+          Left (Left e) -> cancel sessionAsy >> throwIO e
+          Left (Right ()) -> cancel sessionAsy >> throwIO UnexpectedServerTermination
+          Right (Left e) -> throwIO e
+          Right (Right ret) -> return ret
 
 updateStateC :: MonadLoggerIO m => ConduitM FromServerMessage FromServerMessage (StateT SessionState (ReaderT SessionContext m)) ()
 updateStateC = awaitForever $ \msg -> do
