@@ -105,13 +105,13 @@ module Language.LSP.Test
 
 import Control.Applicative.Combinators
 import Control.Concurrent
+import Control.Exception (throw)
 import Control.Monad
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.IO.Class
 import Control.Monad.IO.Unlift
 import Control.Monad.Logger
 import Control.Monad.State (execState)
-import Control.Exception
 import Control.Lens hiding ((.=), List, Empty)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -139,6 +139,7 @@ import System.FilePath
 import System.Process (ProcessHandle, CreateProcess)
 import qualified System.FilePath.Glob as Glob
 import UnliftIO.Directory
+import UnliftIO.Exception
 
 -- | Starts a new session.
 --
@@ -282,7 +283,7 @@ runSessionWithHandles' serverProc serverIn serverOut config' caps rootDir sessio
   checkLegalBetweenMessage (FromServerMess SWindowLogMessage _) = pure ()
   checkLegalBetweenMessage (FromServerMess STelemetryEvent _) = pure ()
   checkLegalBetweenMessage (FromServerMess SWindowShowMessageRequest _) = pure ()
-  checkLegalBetweenMessage msg = throw (IllegalInitSequenceMessage msg)
+  checkLegalBetweenMessage msg = throwIO (IllegalInitSequenceMessage msg)
 
 -- | Check environment variables to override the config
 envOverrideConfig :: SessionConfig -> IO SessionConfig
@@ -309,7 +310,7 @@ getDocumentEdit doc = do
   req <- message SWorkspaceApplyEdit
 
   unless (checkDocumentChanges req || checkChanges req) $
-    liftIO $ throw (IncorrectApplyEditRequest (show req))
+    liftIO $ throwIO (IncorrectApplyEditRequest (show req))
 
   documentContents doc
   where
@@ -518,7 +519,7 @@ waitForDiagnosticsSource src = do
 noDiagnostics :: MonadLoggerIO m => Session m ()
 noDiagnostics = do
   diagsNot <- message STextDocumentPublishDiagnostics
-  when (diagsNot ^. params . LSP.diagnostics /= List []) $ liftIO $ throw UnexpectedDiagnostics
+  when (diagsNot ^. params . LSP.diagnostics /= List []) $ liftIO $ throwIO UnexpectedDiagnostics
 
 -- | Returns the symbols in a document.
 getDocumentSymbols :: MonadLoggerIO m => TextDocumentIdentifier -> Session m (Either [DocumentSymbol] [SymbolInformation])
@@ -527,7 +528,7 @@ getDocumentSymbols doc = do
   case res of
     Right (InL (List xs)) -> return (Left xs)
     Right (InR (List xs)) -> return (Right xs)
-    Left err -> throw (UnexpectedResponseError (SomeLspId $ fromJust rspLid) err)
+    Left err -> throwIO (UnexpectedResponseError (SomeLspId $ fromJust rspLid) err)
 
 -- | Returns the code actions in the specified range.
 getCodeActions :: MonadLoggerIO m => TextDocumentIdentifier -> Range -> Session m [Command |? CodeAction]
@@ -537,7 +538,7 @@ getCodeActions doc range = do
 
   case rsp ^. result of
     Right (List xs) -> return xs
-    Left error -> throw (UnexpectedResponseError (SomeLspId $ fromJust $ rsp ^. LSP.id) error)
+    Left error -> throwIO (UnexpectedResponseError (SomeLspId $ fromJust $ rsp ^. LSP.id) error)
 
 -- | Returns all the code actions in a document by
 -- querying the code actions at each of the current
@@ -554,7 +555,7 @@ getAllCodeActions doc = do
       ResponseMessage _ rspLid res <- request STextDocumentCodeAction (CodeActionParams Nothing Nothing doc (diag ^. range) ctx)
 
       case res of
-        Left e -> throw (UnexpectedResponseError (SomeLspId $ fromJust rspLid) e)
+        Left e -> throwIO (UnexpectedResponseError (SomeLspId $ fromJust rspLid) e)
         Right (List cmdOrCAs) -> pure (acc ++ cmdOrCAs)
 
 getCodeActionContextInRange :: MonadLoggerIO m => TextDocumentIdentifier -> Range -> Session m CodeActionContext

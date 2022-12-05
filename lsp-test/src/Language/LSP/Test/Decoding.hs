@@ -1,28 +1,25 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeInType #-}
 module Language.LSP.Test.Decoding where
 
-import           Prelude                 hiding ( id )
-import           Data.Aeson
-import           Data.Aeson.Types
-import           Data.Foldable
-import           Data.Functor.Product
-import           Data.Functor.Const
-import           Control.Exception
-import           Control.Lens
+import Control.Lens
+import Data.Aeson
+import Data.Aeson.Types
 import qualified Data.ByteString.Lazy.Char8    as B
-import           Data.Maybe
-import           System.IO
-import           System.IO.Error
-import           Language.LSP.Types
-import           Language.LSP.Types.Lens
-import           Language.LSP.Test.Exceptions
-
+import Data.Foldable
+import Data.Functor.Const
+import Data.Functor.Product
 import Data.IxMap
 import Data.Kind
+import Data.Maybe
+import Language.LSP.Test.Exceptions
+import Language.LSP.Types
+import Language.LSP.Types.Lens
+import Prelude                 hiding ( id )
+import System.IO
+import System.IO.Error
+import UnliftIO.Exception
 
 -- | Fetches the next message bytes based on
 -- the Content-Length header
@@ -30,7 +27,7 @@ getNextMessage :: Handle -> IO B.ByteString
 getNextMessage h = do
   headers <- getHeaders h
   case read . init <$> lookup "Content-Length" headers of
-    Nothing   -> throw NoContentLengthHeader
+    Nothing   -> throwIO NoContentLengthHeader
     Just size -> B.hGet h size
 
 addHeader :: B.ByteString -> B.ByteString
@@ -48,8 +45,8 @@ getHeaders h = do
   let (name, val) = span (/= ':') l
   if null val then return [] else ((name, drop 2 val) :) <$> getHeaders h
   where eofHandler e
-          | isEOFError e = throw UnexpectedServerTermination
-          | otherwise = throw e
+          | isEOFError e = throwIO UnexpectedServerTermination
+          | otherwise = throwIO e
 
 type RequestMap = IxMap LspId (SMethod :: Method FromClient Request -> Type )
 
