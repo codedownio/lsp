@@ -308,9 +308,9 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
       flip finally (serverAndListenerFinalizer asy) $ do
         -- If either the server handler or the session throw an exception, rethrow it synchronously
         sessionAsy <- async $ runSession'' session
-        waitEitherCatchCancel asy sessionAsy >>= \case
-          Left (Left e) -> throwIO e
-          Left (Right ()) -> throwIO UnexpectedServerTermination
+        waitEitherCatch asy sessionAsy >>= \case
+          Left (Left e) -> cancel sessionAsy >> throwIO e
+          Left (Right ()) -> cancel sessionAsy >> throwIO UnexpectedServerTermination
           Right (Left e) -> throwIO e
           Right (Right ret) -> return ret
 
