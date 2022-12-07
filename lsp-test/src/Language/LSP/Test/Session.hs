@@ -282,16 +282,16 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
 
   withRunInIO $ \runInIO -> do
     let context = SessionContext serverIn absRootDir messageChan timeoutIdVar reqMap initRsp config caps
-        initState vfs = SessionState 0 vfs mempty False Nothing mempty mempty
+        initState initId vfs = SessionState initId vfs mempty False Nothing mempty mempty
 
-        runSession'' :: Session m b -> m (b, SessionState)
-        runSession'' ses = liftIO $ initVFS $ \vfs -> runInIO $ runSessionMonad context (initState vfs) ses
+        runSession'' :: Int32 -> Session m b -> m (b, SessionState)
+        runSession'' initId ses = liftIO $ initVFS $ \vfs -> runInIO $ runSessionMonad context (initState initId vfs) ses
 
         msgTimeoutUs = messageTimeout config * 10^6
 
         serverAndListenerFinalizer :: Async b -> m (Maybe ((), SessionState))
         serverAndListenerFinalizer asy = do
-          finally (timeout msgTimeoutUs (runSession'' exitServer)) $ do
+          finally (timeout msgTimeoutUs (runSession'' 0 exitServer)) $ do
             -- Make sure to kill the listener first, before closing
             -- handles etc via cleanupProcess
             cancel asy
@@ -307,7 +307,7 @@ runSession' serverIn serverOut mServerProc serverHandler config caps rootDir exi
     (fst <$>) $ runInIO $ withAsyncWithUnmask (\unmask -> unmask (liftIO (serverHandler serverOut context))) $ \asy ->
       flip finally (serverAndListenerFinalizer asy) $ do
         -- If either the server handler or the session throw an exception, rethrow it synchronously
-        sessionAsy <- async $ runSession'' session
+        sessionAsy <- async $ runSession'' 1 session
         waitEitherCatch asy sessionAsy >>= \case
           Left (Left e) -> cancel sessionAsy >> throwIO e
           Left (Right ()) -> cancel sessionAsy >> throwIO UnexpectedServerTermination
