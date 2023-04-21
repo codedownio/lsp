@@ -237,7 +237,7 @@ runSessionWithHandles' serverProc serverIn serverOut config' caps rootDir sessio
     (inBetween, initRspMsg) <- manyTill_ anyMessage (responseForId SInitialize initReqId)
 
     case initRspMsg ^. LSP.result of
-      Left error -> liftIO $ putStrLn ("Error while initializing: " ++ show error)
+      Left error -> logErrorN $ T.pack ("Error while initializing: " ++ show error)
       Right _ -> pure ()
 
     initRspVar <- initRsp <$> ask
