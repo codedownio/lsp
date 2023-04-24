@@ -51,6 +51,7 @@ module Language.LSP.Test
   -- ** Documents
   , createDoc
   , openDoc
+  , openDoc'
   , closeDoc
   , changeDoc
   , documentContents
