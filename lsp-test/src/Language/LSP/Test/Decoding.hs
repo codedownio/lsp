@@ -8,7 +8,6 @@ import Data.Aeson
 import Data.Aeson.Types
 import qualified Data.ByteString.Lazy.Char8    as B
 import Data.Foldable
-import Data.Functor.Const
 import Data.Functor.Product
 import Data.IxMap
 import Data.Kind

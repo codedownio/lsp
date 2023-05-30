@@ -76,7 +76,6 @@ import Language.LSP.Test.Compat
 import Language.LSP.Test.Decoding
 import Language.LSP.Test.Exceptions
 import Language.LSP.Test.Process
-import System.Console.ANSI
 import System.IO
 import System.Process (ProcessHandle())
 import UnliftIO.Async
@@ -481,21 +480,17 @@ data LogMsgType = LogServer | LogClient
   deriving Eq
 
 -- | Logs the message if the config specified it
-logMsg :: (ToJSON a, MonadLoggerIO m, HasReader SessionContext m)
-       => LogMsgType -> a -> m ()
+logMsg :: (
+  ToJSON a, MonadLoggerIO m, HasReader SessionContext m
+  ) => LogMsgType -> a -> m ()
 logMsg t msg = do
   shouldLog <- asks $ logMessages . config
-  shouldColor <- asks $ logColor . config
   when shouldLog $ do
-    -- when shouldColor $ setSGR [SetColor Foreground Dull color]
     logDebugN $ T.pack (arrow ++ showPretty msg)
-    -- when shouldColor $ setSGR [Reset]
 
-  where arrow
-          | t == LogServer  = "<-- "
-          | otherwise       = "--> "
-        color
-          | t == LogServer  = Magenta
-          | otherwise       = Cyan
+  where
+    arrow
+      | t == LogServer  = "<-- "
+      | otherwise       = "--> "
 
-        showPretty = B.unpack . encodePretty
+    showPretty = B.unpack . encodePretty

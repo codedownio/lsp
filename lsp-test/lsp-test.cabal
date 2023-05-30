@@ -73,7 +73,6 @@ library
   other-modules:       Language.LSP.Test.Compat
                        Language.LSP.Test.Decoding
                        Language.LSP.Test.Exceptions
-                       Language.LSP.Test.Files
                        Language.LSP.Test.Parsing
                        Language.LSP.Test.Process
                        Language.LSP.Test.Server
