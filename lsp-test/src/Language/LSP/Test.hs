@@ -102,6 +102,8 @@ module Language.LSP.Test
   , getSemanticTokens
   -- ** Capabilities
   , getRegisteredCapabilities
+  -- ** Custom requests
+  , getCustomRequest
   ) where
 
 import Control.Applicative.Combinators
@@ -806,3 +808,11 @@ getSemanticTokens doc = do
 -- @since 0.11.0.0
 getRegisteredCapabilities :: MonadLoggerIO m => Session m [SomeRegistration]
 getRegisteredCapabilities = Map.elems . curDynCaps <$> get
+
+-- | Returns the result of running a custom LSP command.
+-- For example: rust-analyzer has a command called "rust-analyzer/analyzerStatus"
+--
+-- @since 0.12.0.0
+getCustomRequest :: MonadLoggerIO m => T.Text -> Value -> Session m Value
+getCustomRequest methodName params =
+  getResponseResult <$> request (SCustomMethod methodName) params
