@@ -3,6 +3,7 @@
 -- Control.Monad.IO.Class but it's needed for
 -- MonadIO
 {-# OPTIONS_GHC -Wunused-imports #-}
+
 module Language.LSP.Test.Compat where
 
 import Data.Maybe
@@ -100,7 +101,7 @@ cleanupProcess (mb_stdin, mb_stdout, mb_stderr, ph) = do
     return ()
   where ignoreSigPipe = ignoreIOError ResourceVanished ePIPE
         ignorePermDenied = ignoreIOError PermissionDenied eACCES
-    
+
 ignoreIOError :: IOErrorType -> Errno -> IO () -> IO ()
 ignoreIOError ioErrorType errno =
   C.handle $ \e -> case e of

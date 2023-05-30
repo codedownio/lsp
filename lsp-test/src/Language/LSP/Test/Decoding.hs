@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeInType #-}
+
 module Language.LSP.Test.Decoding where
 
 import Control.Lens
