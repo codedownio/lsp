@@ -32,12 +32,12 @@ import Control.Monad.Logger
 import Control.Monad.Reader
 import Language.LSP.Test.Compat
 import Language.LSP.Test.Decoding
+import Language.LSP.Test.Exceptions
 import Language.LSP.Test.Process
 import Language.LSP.Test.Session.Core
 import Language.LSP.Test.Session.UpdateState
 import Language.LSP.Test.Types
 import Language.LSP.Types.Capabilities
-import Language.LSP.VFS
 import System.IO
 import System.Process (ProcessHandle())
 import UnliftIO.Async
@@ -81,54 +81,38 @@ runSession' :: forall m a. (
   ) => Handle -- ^ Server in
     -> Handle -- ^ Server out
     -> Maybe ProcessHandle -- ^ Server process
-    -> (Handle -> SessionContext -> IO ()) -- ^ Server listener
+    -> (Handle -> SessionContext -> m ()) -- ^ Server listener
     -> SessionConfig
     -> ClientCapabilities
     -> FilePath -- ^ Root directory
     -> Session m () -- ^ To exit the Server properly
     -> Session m a
     -> m a
-runSession' servIn servOut mServerProc servHandler config caps rootDir exitServer session = do
-  absRootDir <- canonicalizePath rootDir
-
+runSession' servIn servOut mServerProc servHandler config caps rootDir exitServer session = initVFS' $ \vfs -> do
   liftIO $ hSetBuffering servIn  NoBuffering
   liftIO $ hSetBuffering servOut NoBuffering
 
-  -- This is required to make sure that we don’t get any
-  -- newline conversion or weird encoding issues.
+  -- Make sure that we don’t get any newline conversion or weird encoding issues.
   liftIO $ hSetBinaryMode servIn True
   liftIO $ hSetBinaryMode servOut True
 
-  reqMap <- newMVar newRequestMap
-  messageChan <- newChan
-  timeoutIdVar <- newIORef 0
-  initRsp <- newEmptyMVar
+  context <- SessionContext
+    servIn
+    <$> canonicalizePath rootDir
+    <*> newChan
+    <*> newIORef 0
+    <*> newMVar newRequestMap
+    <*> newEmptyMVar
+    <*> pure config
+    <*> pure caps
+    <*> newMVar (SessionState 0 vfs mempty False Nothing mempty mempty)
 
-  let mkContext initId vfs = do
-        sessionState <- newMVar $ SessionState initId vfs mempty False Nothing mempty mempty
-        return $ SessionContext {
-          serverIn = servIn
-          , rootDir = absRootDir
-          , messageChan = messageChan
-          -- Keep curTimeoutId in SessionContext, as its tied to messageChan
-          , curTimeoutId = timeoutIdVar
-          , requestMap = reqMap
-          , initRsp = initRsp
-          , config = config
-          , sessionCapabilities = caps
-          , sessionState = sessionState
-          }
-
-  liftIO $ initVFS $ \vfs -> do
-    context <- mkContext 0 vfs
-
-    let
-      runSession'' :: Session m b -> m b
+  let runSession'' :: Session m b -> m b
       runSession'' (Session ses) = runReaderT ses context
 
-      msgTimeoutUs = messageTimeout config * 10^6
+  let msgTimeoutUs = messageTimeout config * 10^6
 
-      serverAndListenerFinalizer :: Async b -> m (Maybe ())
+  let serverAndListenerFinalizer :: Async b -> m (Maybe ())
       serverAndListenerFinalizer asy = do
         finally (timeout msgTimeoutUs (runSession'' exitServer)) $ do
           -- Make sure to kill the listener first, before closing
@@ -143,13 +127,12 @@ runSession' servIn servOut mServerProc servHandler config caps rootDir exitServe
               liftIO $ cleanupProcess (Just servIn, Just servOut, Nothing, sp)
             _ -> pure ()
 
-    undefined
-    -- withAsyncWithUnmask (\unmask -> liftIO (unmask (liftIO (servHandler servOut context)))) $ \asy ->
-    --   flip finally (serverAndListenerFinalizer asy) $ do
-    --     -- If either the server handler or the session throw an exception, rethrow it synchronously
-    --     sessionAsy <- async $ runSession'' session
-    --     waitEitherCatch asy sessionAsy >>= \case
-    --       Left (Left e) -> cancel sessionAsy >> throwIO e
-    --       Left (Right ()) -> cancel sessionAsy >> throwIO UnexpectedServerTermination
-    --       Right (Left e) -> throwIO e
-    --       Right (Right ret) -> return ret
+  withAsyncWithUnmask (\unmask -> unmask (servHandler servOut context)) $ \asy ->
+    flip finally (serverAndListenerFinalizer asy) $ do
+      -- If either the server handler or the session throw an exception, rethrow it synchronously
+      sessionAsy <- async $ runSession'' session
+      waitEitherCatch asy sessionAsy >>= \case
+        Left (Left e) -> cancel sessionAsy >> throwIO e
+        Left (Right ()) -> cancel sessionAsy >> throwIO UnexpectedServerTermination
+        Right (Left e) -> throwIO e
+        Right (Right ret) -> return ret

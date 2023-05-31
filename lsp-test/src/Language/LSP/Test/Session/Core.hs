@@ -3,6 +3,7 @@ module Language.LSP.Test.Session.Core where
 
 import Control.Monad
 import Control.Monad.Except
+import Control.Monad.IO.Unlift
 import Control.Monad.Logger
 import Control.Monad.Reader
 import Data.Aeson hiding (Error)
@@ -12,7 +13,9 @@ import qualified Data.Text as T
 import Language.LSP.Test.Decoding
 import Language.LSP.Test.Exceptions
 import Language.LSP.Test.Types
+import Language.LSP.VFS
 import UnliftIO.Exception
+import UnliftIO.Temporary
 
 
 sendMessage :: (MonadLoggerIO m, MonadReader SessionContext m, ToJSON a) => a -> m ()
@@ -36,3 +39,6 @@ logMsg t msg = do
       | otherwise       = "--> "
 
     showPretty = B.unpack . encodePretty
+
+initVFS' :: MonadUnliftIO m => (VFS -> m r) -> m r
+initVFS' k = withSystemTempDirectory "haskell-lsp" $ \temp_dir -> k (VFS mempty temp_dir)

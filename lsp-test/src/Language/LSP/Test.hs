@@ -264,34 +264,35 @@ runSessionWithHandles' serverProc serverIn serverOut config' caps rootDir sessio
 
     -- Run the actual test
     session
+
   where
-  -- | Asks the server to shutdown and exit politely
-  exitServer :: Session m ()
-  exitServer = request_ SShutdown Empty >> sendNotification SExit Empty
+    -- | Asks the server to shutdown and exit politely
+    exitServer :: Session m ()
+    exitServer = request_ SShutdown Empty >> sendNotification SExit Empty
 
-  -- | Listens to the server output until the shutdown ACK,
-  -- makes sure it matches the record and signals any semaphores
-  listenServer :: Handle -> SessionContext -> IO ()
-  listenServer serverOut context = do
-    msgBytes <- getNextMessage serverOut
+    -- | Listens to the server output until the shutdown ACK,
+    -- makes sure it matches the record and signals any semaphores
+    listenServer :: Handle -> SessionContext -> m ()
+    listenServer serverOut context = do
+      msgBytes <- liftIO $ getNextMessage serverOut
 
-    msg <- modifyMVar (requestMap context) $ \reqMap ->
-      pure $ decodeFromServerMsg reqMap msgBytes
-    writeChan (messageChan context) (ServerMessage msg)
+      msg <- modifyMVar (requestMap context) $ \reqMap ->
+        pure $ decodeFromServerMsg reqMap msgBytes
+      writeChan (messageChan context) (ServerMessage msg)
 
-    case msg of
-      (FromServerRsp SShutdown _) -> return ()
-      _                           -> listenServer serverOut context
+      case msg of
+        (FromServerRsp SShutdown _) -> return ()
+        _                           -> listenServer serverOut context
 
-  -- | Is this message allowed to be sent by the server between the intialize
-  -- request and response?
-  -- https://microsoft.github.io/language-server-protocol/specifications/specification-3-15/#initialize
-  checkLegalBetweenMessage :: FromServerMessage -> Session m ()
-  checkLegalBetweenMessage (FromServerMess SWindowShowMessage _) = pure ()
-  checkLegalBetweenMessage (FromServerMess SWindowLogMessage _) = pure ()
-  checkLegalBetweenMessage (FromServerMess STelemetryEvent _) = pure ()
-  checkLegalBetweenMessage (FromServerMess SWindowShowMessageRequest _) = pure ()
-  checkLegalBetweenMessage msg = throwIO (IllegalInitSequenceMessage msg)
+    -- | Is this message allowed to be sent by the server between the intialize
+    -- request and response?
+    -- https://microsoft.github.io/language-server-protocol/specifications/specification-3-15/#initialize
+    checkLegalBetweenMessage :: FromServerMessage -> Session m ()
+    checkLegalBetweenMessage (FromServerMess SWindowShowMessage _) = pure ()
+    checkLegalBetweenMessage (FromServerMess SWindowLogMessage _) = pure ()
+    checkLegalBetweenMessage (FromServerMess STelemetryEvent _) = pure ()
+    checkLegalBetweenMessage (FromServerMess SWindowShowMessageRequest _) = pure ()
+    checkLegalBetweenMessage msg = throwIO (IllegalInitSequenceMessage msg)
 
 -- | Check environment variables to override the config
 envOverrideConfig :: SessionConfig -> IO SessionConfig
