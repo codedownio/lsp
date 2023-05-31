@@ -15,7 +15,7 @@ module Language.LSP.Test.Types (
 where
 
 import Control.Applicative
-import Control.Monad.Catch (MonadThrow)
+import Control.Monad.Catch (MonadCatch, MonadMask, MonadThrow)
 import Control.Monad.Except
 import Control.Monad.Reader
 #if __GLASGOW_HASKELL__ == 806
@@ -47,7 +47,7 @@ import UnliftIO.Exception
 -- 'Language.LSP.Test.sendNotification'.
 
 newtype Session m a = Session { unwrapSession :: ReaderT SessionContext m a }
-  deriving (Functor, Applicative, Monad, MonadIO, MonadLogger, MonadLoggerIO, Alternative, MonadThrow, MonadReader SessionContext, MonadUnliftIO)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadLogger, MonadLoggerIO, Alternative, MonadThrow, MonadReader SessionContext, MonadUnliftIO, MonadMask, MonadCatch)
 
 #if __GLASGOW_HASKELL__ >= 806
 instance MonadIO m => MonadFail (Session m) where
