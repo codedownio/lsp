@@ -1,12 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeInType #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE DuplicateRecordFields #-}
 
 {-|
 Module      : Language.LSP.Test
@@ -261,7 +257,7 @@ runSessionWithHandles' servProc servIn servOut config' caps root session = do
     -- As long as they are allowed.
     forM_ inBetween checkLegalBetweenMessage
     msgChan <- asks messageChan
-    liftIO $ writeList2Chan msgChan (ServerMessage <$> inBetween)
+    liftIO $ writeList2Chan msgChan inBetween
 
     -- Run the actual test
     session
@@ -279,7 +275,7 @@ runSessionWithHandles' servProc servIn servOut config' caps root session = do
 
       msg <- modifyMVar (requestMap ctx) $ \reqMap ->
         pure $ decodeFromServerMsg reqMap msgBytes
-      writeChan (messageChan ctx) (ServerMessage msg)
+      writeChan (messageChan ctx) msg
 
       case msg of
         (FromServerRsp SShutdown _) -> return ()

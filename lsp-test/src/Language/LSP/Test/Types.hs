@@ -7,7 +7,6 @@ module Language.LSP.Test.Types (
   Session(..)
   , SessionConfig(..)
   , defaultConfig
-  , SessionMessage(..)
   , SessionContext(..)
   , SessionState(..)
   , LogMsgType(..)
@@ -81,22 +80,16 @@ data SessionConfig = SessionConfig {
   -- Defaults to Nothing.
   }
 
--- | The configuration used in 'Language.LSP.Test.runSession'.
 defaultConfig :: SessionConfig
 defaultConfig = SessionConfig 60 False False True Nothing False Nothing
 
 instance Default SessionConfig where
   def = defaultConfig
 
-data SessionMessage =
-  ServerMessage FromServerMessage
-  | TimeoutMessage Int
-  deriving Show
-
 data SessionContext = SessionContext {
   serverIn :: Handle
   , rootDir :: FilePath
-  , messageChan :: Chan SessionMessage
+  , messageChan :: Chan FromServerMessage
   , requestMap :: MVar RequestMap
   , initRsp :: MVar (ResponseMessage 'Initialize)
   , config :: SessionConfig
