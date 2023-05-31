@@ -34,7 +34,6 @@ import Language.LSP.Test.Process
 import Language.LSP.Test.Session.Core
 import Language.LSP.Test.Session.UpdateState
 import Language.LSP.Test.Types
-import Language.LSP.Types
 import Language.LSP.Types.Capabilities
 import System.IO
 import System.Process (ProcessHandle())

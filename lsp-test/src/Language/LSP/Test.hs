@@ -15,10 +15,9 @@ Provides the framework to start functionally testing
 <https://github.com/Microsoft/language-server-protocol Language Server Protocol servers>.
 You should import "Language.LSP.Types" alongside this.
 -}
-module Language.LSP.Test
-  (
+module Language.LSP.Test (
   -- * Sessions
-    Session
+  Session
   , runSession
   , runSessionWithConfig
   , runSessionWithConfigCustomProcess

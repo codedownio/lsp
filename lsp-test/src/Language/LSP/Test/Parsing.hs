@@ -25,10 +25,13 @@ import Control.Monad.IO.Unlift
 import Control.Monad.Logger
 import qualified Data.Text as T
 import Data.Typeable
+import Language.LSP.Test.Exceptions
 import Language.LSP.Test.Session
 import Language.LSP.Types
 import Prelude hiding (pred)
 import UnliftIO.Concurrent
+import UnliftIO.Exception
+import UnliftIO.Timeout
 
 -- $receiving
 -- To receive a message, specify the method of the message to expect:
@@ -73,17 +76,24 @@ satisfyMaybe pred = satisfyMaybeM (pure . pred)
 satisfyMaybeM :: (MonadLoggerIO m, MonadUnliftIO m) => (FromServerMessage -> Session m (Maybe a)) -> Session m a
 satisfyMaybeM pred = do
   skipTimeout <- overridingTimeout <$> (asks sessionState >>= readMVar)
+  timeoutSeconds <- asks (messageTimeout . config)
   chan <- asks messageChan
 
-  msg <- undefined -- Session await
+  maybeMsg <- (if skipTimeout then (Just <$>) else timeout (timeoutSeconds * 10^(6 :: Int)))
+              (readChan chan)
 
-  modifyStatePure (\s -> s { lastReceivedMessage = Just msg })
+  case maybeMsg of
+    Nothing -> do
+      lastMsg <- lastReceivedMessage <$> (asks sessionState >>= readMVar)
+      throwIO (Timeout lastMsg)
+    Just msg -> do
+      modifyStatePure (\s -> s { lastReceivedMessage = Just msg })
 
-  pred msg >>= \case
-    Just a -> do
-      logMsg LogServer msg
-      return a
-    Nothing -> undefined -- empty
+      pred msg >>= \case
+        Just a -> do
+          logMsg LogServer msg
+          return a
+        Nothing -> undefined -- empty
 
 -- | Matches a request or a notification coming from the server.
 -- Doesn't match Custom Messages

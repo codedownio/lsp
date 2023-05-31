@@ -44,6 +44,7 @@ library
                      , MultiParamTypeClasses
                      , NumericUnderscores
                      , NamedFieldPuns
+                     , DuplicateRecordFields
   build-depends:       base >= 4.10 && < 5
                      , lsp-types == 1.5.* || == 1.6.*
                      , lsp == 1.5.* || == 1.6.*
