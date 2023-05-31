@@ -1,3 +1,4 @@
+
 module Language.LSP.Test.Server (withServer) where
 
 import Control.Monad

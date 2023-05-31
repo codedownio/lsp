@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, OverloadedStrings #-}
+{-# LANGUAGE CPP #-}
 -- For some reason ghc warns about not using
 -- Control.Monad.IO.Class but it's needed for
 -- MonadIO

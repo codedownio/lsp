@@ -1,5 +1,3 @@
-{-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 module Language.LSP.Test.Process (
   gracefullyWaitForProcess
