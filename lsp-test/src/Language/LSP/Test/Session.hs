@@ -16,8 +16,6 @@ module Language.LSP.Test.Session (
   , asks
   , sendMessage
   , updateState
-  , getCurTimeoutId
-  , bumpTimeoutId
   , logMsg
   , LogMsgType(..)
   , documentChangeUri
@@ -44,7 +42,6 @@ import UnliftIO.Async
 import UnliftIO.Concurrent hiding (yield, throwTo)
 import UnliftIO.Directory
 import UnliftIO.Exception
-import UnliftIO.IORef
 import UnliftIO.Timeout
 
 
@@ -100,21 +97,15 @@ runSession' servIn servOut mServerProc servHandler config caps rootDir exitServe
     servIn
     <$> canonicalizePath rootDir
     <*> newChan
-    <*> newIORef 0
     <*> newMVar newRequestMap
     <*> newEmptyMVar
     <*> pure config
     <*> pure caps
     <*> newMVar (SessionState 0 vfs mempty False Nothing mempty mempty)
 
-  let runSession'' :: Session m b -> m b
-      runSession'' (Session ses) = runReaderT ses context
-
-  let msgTimeoutUs = messageTimeout config * 10^6
-
   let serverAndListenerFinalizer :: Async b -> m (Maybe ())
       serverAndListenerFinalizer asy = do
-        finally (timeout msgTimeoutUs (runSession'' exitServer)) $ do
+        finally (timeout (messageTimeout config * 10^(6 :: Int)) (runReaderT (unwrapSession exitServer) context)) $ do
           -- Make sure to kill the listener first, before closing
           -- handles etc via cleanupProcess
           cancel asy
@@ -123,14 +114,14 @@ runSession' servIn servOut mServerProc servHandler config caps rootDir exitServe
             Just sp -> do
               -- Give the server some time to exit cleanly
               -- It makes the server hangs in windows so we have to avoid it
-              gracefullyWaitForProcess msgTimeoutUs sp
+              gracefullyWaitForProcess (messageTimeout config * 10^(6 :: Int)) sp
               liftIO $ cleanupProcess (Just servIn, Just servOut, Nothing, sp)
             _ -> pure ()
 
   withAsyncWithUnmask (\unmask -> unmask (servHandler servOut context)) $ \asy ->
     flip finally (serverAndListenerFinalizer asy) $ do
       -- If either the server handler or the session throw an exception, rethrow it synchronously
-      sessionAsy <- async $ runSession'' session
+      sessionAsy <- async $ runReaderT (unwrapSession session) context
       waitEitherCatch asy sessionAsy >>= \case
         Left (Left e) -> cancel sessionAsy >> throwIO e
         Left (Right ()) -> cancel sessionAsy >> throwIO UnexpectedServerTermination

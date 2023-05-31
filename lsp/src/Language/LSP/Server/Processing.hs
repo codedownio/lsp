@@ -23,7 +23,7 @@ import Control.Lens hiding (List, Empty)
 import Data.Aeson hiding (Options, Error)
 import Data.Aeson.Types hiding (Options, Error)
 import qualified Data.ByteString.Lazy as BSL
-import Data.List
+import Data.List hiding (singleton)
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Encoding as TL

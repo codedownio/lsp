@@ -11,9 +11,6 @@ module Language.LSP.Test.Types (
   , SessionContext(..)
   , SessionState(..)
   , LogMsgType(..)
-
-  , getCurTimeoutId
-  , bumpTimeoutId
   )
 
 where
@@ -41,7 +38,6 @@ import Language.LSP.Test.Exceptions
 import System.IO
 import UnliftIO.Concurrent hiding (yield, throwTo)
 import UnliftIO.Exception
-import UnliftIO.IORef
 
 
 -- | A session representing one instance of launching and connecting to a server.
@@ -51,7 +47,7 @@ import UnliftIO.IORef
 -- 'Language.LSP.Test.sendRequest' and
 -- 'Language.LSP.Test.sendNotification'.
 
-newtype Session m a = Session (ReaderT SessionContext m a)
+newtype Session m a = Session { unwrapSession :: ReaderT SessionContext m a }
   deriving (Functor, Applicative, Monad, MonadIO, MonadLogger, MonadLoggerIO, Alternative, MonadThrow, MonadReader SessionContext, MonadUnliftIO)
 
 #if __GLASGOW_HASKELL__ >= 806
@@ -101,10 +97,6 @@ data SessionContext = SessionContext {
   serverIn :: Handle
   , rootDir :: FilePath
   , messageChan :: Chan SessionMessage
-  -- ^ Where all messages come through
-  , curTimeoutId :: IORef Int
-  -- ^ The current timeout we are waiting on
-  -- Keep curTimeoutId in SessionContext, as its tied to messageChan
   , requestMap :: MVar RequestMap
   , initRsp :: MVar (ResponseMessage 'Initialize)
   , config :: SessionConfig
@@ -127,16 +119,3 @@ data SessionState = SessionState {
 
 data LogMsgType = LogServer | LogClient
   deriving Eq
-
--- * Utilities for working with timeouts
-
-getCurTimeoutId :: (MonadReader SessionContext m, MonadIO m) => m Int
-getCurTimeoutId = asks curTimeoutId >>= liftIO . readIORef
-
--- Pass this the timeoutid you *were* waiting on
-bumpTimeoutId :: (MonadReader SessionContext m, MonadIO m) => Int -> m ()
-bumpTimeoutId prev = do
-  v <- asks curTimeoutId
-  -- when updating the curtimeoutid, account for the fact that something else
-  -- might have bumped the timeoutid in the meantime
-  liftIO $ atomicModifyIORef' v (\x -> (max x (prev + 1), ()))

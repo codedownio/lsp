@@ -16,17 +16,18 @@ module Language.LSP.Test.Parsing (
   , anyNotification
   , anyMessage
   , loggingNotification
+  , isLogNotification
   , publishDiagnosticsNotification
   ) where
 
 import Control.Monad
-import Control.Monad.IO.Class
 import Control.Monad.IO.Unlift
 import Control.Monad.Logger
 import qualified Data.Text as T
 import Data.Typeable
 import Language.LSP.Test.Session
 import Language.LSP.Types
+import Prelude hiding (pred)
 import UnliftIO.Concurrent
 
 -- $receiving
@@ -72,31 +73,15 @@ satisfyMaybe pred = satisfyMaybeM (pure . pred)
 satisfyMaybeM :: (MonadLoggerIO m, MonadUnliftIO m) => (FromServerMessage -> Session m (Maybe a)) -> Session m a
 satisfyMaybeM pred = do
   skipTimeout <- overridingTimeout <$> (asks sessionState >>= readMVar)
-  timeoutId <- getCurTimeoutId
-  mtid <-
-    if skipTimeout
-    then pure Nothing
-    else Just <$> do
-      chan <- asks messageChan
-      timeout <- asks (messageTimeout . config)
-      liftIO $ forkIOWithUnmask $ \unmask -> unmask $ do
-        threadDelay (timeout * 1000000)
-        writeChan chan (TimeoutMessage timeoutId)
+  chan <- asks messageChan
 
-  x <- undefined -- Session await
+  msg <- undefined -- Session await
 
-  forM_ mtid $ \tid -> do
-    bumpTimeoutId timeoutId
-    liftIO $ killThread tid
+  modifyStatePure (\s -> s { lastReceivedMessage = Just msg })
 
-  ss <- asks sessionState
-  modifyMVar_ ss $ \s -> pure $ s { lastReceivedMessage = Just x }
-
-  res <- pred x
-
-  case res of
+  pred msg >>= \case
     Just a -> do
-      logMsg LogServer x
+      logMsg LogServer msg
       return a
     Nothing -> undefined -- empty
 
@@ -112,7 +97,7 @@ message m1 = satisfyMaybe $ \case
       Left _f -> Nothing
   _ -> Nothing
 
-customRequest :: (MonadLoggerIO m, MonadUnliftIO m) => T.Text -> Session m (ServerMessage (CustomMethod :: Method FromServer Request))
+customRequest :: (MonadLoggerIO m, MonadUnliftIO m) => T.Text -> Session m (ServerMessage ('CustomMethod :: Method 'FromServer 'Request))
 customRequest m = satisfyMaybe $ \case
   FromServerMess m1 msg -> case splitServerMethod m1 of
     IsServerEither -> case msg of
@@ -121,7 +106,7 @@ customRequest m = satisfyMaybe $ \case
     _ -> Nothing
   _ -> Nothing
 
-customNotification :: (MonadLoggerIO m, MonadUnliftIO m) => T.Text -> Session m (ServerMessage (CustomMethod :: Method FromServer Notification))
+customNotification :: (MonadLoggerIO m, MonadUnliftIO m) => T.Text -> Session m (ServerMessage ('CustomMethod :: Method 'FromServer 'Notification))
 customNotification m = satisfyMaybe $ \case
   FromServerMess m1 msg -> case splitServerMethod m1 of
     IsServerEither -> case msg of
@@ -156,7 +141,7 @@ anyResponse = satisfy $ \case
   FromServerRsp _ _ -> True
 
 -- | Matches a response coming from the server.
-response :: (MonadLoggerIO n, MonadUnliftIO n) => SMethod (m :: Method FromClient Request) -> Session n (ResponseMessage m)
+response :: (MonadLoggerIO n, MonadUnliftIO n) => SMethod (m :: Method 'FromClient 'Request) -> Session n (ResponseMessage m)
 response m1 = satisfyMaybe $ \case
   FromServerRsp m2 msg -> do
     HRefl <- runEq mEqClient m1 m2
@@ -164,7 +149,7 @@ response m1 = satisfyMaybe $ \case
   _ -> Nothing
 
 -- | Like 'response', but matches a response for a specific id.
-responseForId :: (MonadLoggerIO n, MonadUnliftIO n) => SMethod (m :: Method FromClient Request) -> LspId m -> Session n (ResponseMessage m)
+responseForId :: (MonadLoggerIO n, MonadUnliftIO n) => SMethod (m :: Method 'FromClient 'Request) -> LspId m -> Session n (ResponseMessage m)
 responseForId m lid = do
   satisfyMaybe $ \msg -> do
     case msg of
@@ -180,24 +165,19 @@ anyMessage = satisfy (const True)
 
 -- | Matches if the message is a log message notification or a show message notification/request.
 loggingNotification :: (MonadLoggerIO m, MonadUnliftIO m) => Session m FromServerMessage
-loggingNotification = satisfy shouldSkip
-  where
-    shouldSkip (FromServerMess SWindowLogMessage _) = True
-    shouldSkip (FromServerMess SWindowShowMessage _) = True
-    shouldSkip (FromServerMess SWindowShowMessageRequest _) = True
-    shouldSkip (FromServerMess SWindowShowDocument _) = True
-    shouldSkip _ = False
+loggingNotification = satisfy isLogNotification
 
-isLogNotification (ServerMessage (FromServerMess SWindowLogMessage _)) = True
-isLogNotification (ServerMessage (FromServerMess SWindowShowMessage _)) = True
-isLogNotification (ServerMessage (FromServerMess SWindowShowMessageRequest _)) = True
-isLogNotification (ServerMessage (FromServerMess SWindowShowDocument _)) = True
+isLogNotification :: FromServerMessage -> Bool
+isLogNotification (FromServerMess SWindowLogMessage _) = True
+isLogNotification (FromServerMess SWindowShowMessage _) = True
+isLogNotification (FromServerMess SWindowShowMessageRequest _) = True
+isLogNotification (FromServerMess SWindowShowDocument _) = True
 isLogNotification _ = False
 
 -- | Matches a 'Language.LSP.Types.TextDocumentPublishDiagnostics'
 -- (textDocument/publishDiagnostics) notification.
-publishDiagnosticsNotification :: (MonadLoggerIO m, MonadUnliftIO m) => Session m (Message TextDocumentPublishDiagnostics)
+publishDiagnosticsNotification :: (MonadLoggerIO m, MonadUnliftIO m) => Session m (Message 'TextDocumentPublishDiagnostics)
 publishDiagnosticsNotification =
-  satisfyMaybe $ \msg -> case msg of
+  satisfyMaybe $ \case
     FromServerMess STextDocumentPublishDiagnostics diags -> Just diags
     _ -> Nothing
