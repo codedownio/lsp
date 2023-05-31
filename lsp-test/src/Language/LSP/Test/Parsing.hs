@@ -161,13 +161,12 @@ response m1 = satisfyMaybe $ \case
 -- | Like 'response', but matches a response for a specific id.
 responseForId :: (MonadLoggerIO n, MonadUnliftIO n) => SMethod (m :: Method 'FromClient 'Request) -> LspId m -> Session n (ResponseMessage m)
 responseForId m lid = do
-  satisfyMaybe $ \msg -> do
-    case msg of
-      FromServerMess _ _ -> Nothing
-      FromServerRsp m' rspMsg@(ResponseMessage _ lid' _) -> do
-        HRefl <- runEq mEqClient m m'
-        guard (Just lid == lid')
-        pure rspMsg
+  satisfyMaybe $ \case
+    FromServerMess _ _ -> Nothing
+    FromServerRsp m' rspMsg@(ResponseMessage _ lid' _) -> do
+      HRefl <- runEq mEqClient m m'
+      guard (Just lid == lid')
+      pure rspMsg
 
 -- | Matches any type of message.
 anyMessage :: (MonadLoggerIO m, MonadUnliftIO m) => Session m FromServerMessage
