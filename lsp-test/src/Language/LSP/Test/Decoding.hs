@@ -14,8 +14,8 @@ import Data.Kind
 import Data.Maybe
 import Language.LSP.Test.Exceptions
 import Language.LSP.Types
-import Language.LSP.Types.Lens
-import Prelude                 hiding ( id )
+import Language.LSP.Types.Lens hiding (name)
+import Prelude hiding ( id )
 import System.IO
 import System.IO.Error
 import UnliftIO.Exception
@@ -47,13 +47,13 @@ getHeaders h = do
           | isEOFError e = throwIO UnexpectedServerTermination
           | otherwise = throwIO e
 
-type RequestMap = IxMap LspId (SMethod :: Method FromClient Request -> Type )
+type RequestMap = IxMap LspId (SMethod :: Method 'FromClient 'Request -> Type )
 
 newRequestMap :: RequestMap
 newRequestMap = emptyIxMap
 
 updateRequestMap :: RequestMap -> LspId m -> SClientMethod m -> Maybe RequestMap
-updateRequestMap reqMap id method = insertIxMap id method reqMap
+updateRequestMap reqMap lspId meth = insertIxMap lspId meth reqMap
 
 getRequestMap :: [FromClientMessage] -> RequestMap
 getRequestMap = foldl' helper emptyIxMap
@@ -65,7 +65,7 @@ getRequestMap = foldl' helper emptyIxMap
       IsClientReq -> fromJust $ updateRequestMap acc (mess ^. id) m
       IsClientEither -> case mess of
         NotMess _ -> acc
-        ReqMess msg -> fromJust $ updateRequestMap acc (msg ^. id) m
+        ReqMess msg' -> fromJust $ updateRequestMap acc (msg' ^. id) m
     _ -> acc
 
 decodeFromServerMsg :: RequestMap -> B.ByteString -> (RequestMap, FromServerMessage)
@@ -75,7 +75,7 @@ decodeFromServerMsg reqMap bytes = unP $ parse p obj
           let (mm, newMap) = pickFromIxMap lid reqMap
             in case mm of
               Nothing -> Nothing
-              Just m -> Just $ (m, Pair m (Const newMap))
+              Just m -> Just (m, Pair m (Const newMap))
         unP (Success (FromServerMess m msg)) = (reqMap, FromServerMess m msg)
         unP (Success (FromServerRsp (Pair m (Const newMap)) msg)) = (newMap, FromServerRsp m msg)
         unP (Error e) = error $ "Error decoding " <> show obj <> " :" <> e

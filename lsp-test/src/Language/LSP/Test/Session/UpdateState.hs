@@ -31,7 +31,7 @@ import Language.LSP.Test.Session.Core
 import Language.LSP.Test.Types
 import Language.LSP.Types
 import qualified Language.LSP.Types.Lens as LSP
-import Language.LSP.Types.Lens hiding (cancel)
+import Language.LSP.Types.Lens hiding (cancel, contents, edits, item)
 import Language.LSP.VFS
 import UnliftIO.Concurrent hiding (yield, throwTo)
 
@@ -95,21 +95,21 @@ updateState (FromServerMess SWorkspaceApplyEdit r) = do
   let sortedVersions = map (sortBy (compare `on` (^. textDocument . version))) groupedParams
       latestVersions = map ((^. textDocument) . last) sortedVersions
 
-  forM_ latestVersions $ \(VersionedTextDocumentIdentifier uri v) ->
+  forM_ latestVersions $ \(VersionedTextDocumentIdentifier u v) ->
     modifyStatePure $ \s ->
       let oldVFS = vfs s
           update (VirtualFile oldV file_ver t) = VirtualFile (fromMaybe oldV v) (file_ver +1) t
-          newVFS = oldVFS & vfsMap . ix (toNormalizedUri uri) %~ update
+          newVFS = oldVFS & vfsMap . ix (toNormalizedUri u) %~ update
       in s { vfs = newVFS }
 
   where
         logger = LogAction $ \(WithSeverity msg sev) -> case sev of { Error -> error $ show msg; _ -> pure () }
-        checkIfNeedsOpened uri = do
+        checkIfNeedsOpened u = do
           oldVFS <- vfs <$> (asks sessionState >>= readMVar)
 
           -- if its not open, open it
-          unless (has (vfsMap . ix (toNormalizedUri uri)) oldVFS) $ do
-            let fp = fromJust $ uriToFilePath uri
+          unless (has (vfsMap . ix (toNormalizedUri u)) oldVFS) $ do
+            let fp = fromJust $ uriToFilePath u
             contents <- liftIO $ T.readFile fp
             let item = TextDocumentItem (filePathToUri fp) "" 0 contents
                 msg = NotificationMessage "2.0" STextDocumentDidOpen (DidOpenTextDocumentParams item)
@@ -131,26 +131,26 @@ updateState (FromServerMess SWorkspaceApplyEdit r) = do
         getParamsFromDocumentChange (InL textDocumentEdit) = Just $ getParamsFromTextDocumentEdit textDocumentEdit
         getParamsFromDocumentChange _ = Nothing
 
-        bumpNewestVersion (VersionedTextDocumentIdentifier uri _) =
-          head <$> textDocumentVersions uri
+        bumpNewestVersion (VersionedTextDocumentIdentifier u _) =
+          head <$> textDocumentVersions u
 
         -- For a uri returns an infinite list of versions [n,n+1,n+2,...]
         -- where n is the current version
-        textDocumentVersions uri = do
-          vfs <- vfs <$> (asks sessionState >>= readMVar)
-          let curVer = fromMaybe 0 $ vfs ^? vfsMap . ix (toNormalizedUri uri) . lsp_version
-          pure $ map (VersionedTextDocumentIdentifier uri . Just) [curVer + 1..]
+        textDocumentVersions u = do
+          vfs' <- vfs <$> (asks sessionState >>= readMVar)
+          let curVer = fromMaybe 0 $ vfs' ^? vfsMap . ix (toNormalizedUri u) . lsp_version
+          pure $ map (VersionedTextDocumentIdentifier u . Just) [curVer + 1..]
 
-        textDocumentEdits uri edits = do
-          vers <- textDocumentVersions uri
+        textDocumentEdits u edits = do
+          vers <- textDocumentVersions u
           pure $ map (\(v, e) -> TextDocumentEdit v (List [InL e])) $ zip vers edits
 
-        getChangeParams uri (List edits) = do
-          map <$> pure getParamsFromTextDocumentEdit <*> textDocumentEdits uri (reverse edits)
+        getChangeParams u (List edits) = do
+          map getParamsFromTextDocumentEdit <$> textDocumentEdits u (reverse edits)
 
         mergeParams :: [DidChangeTextDocumentParams] -> DidChangeTextDocumentParams
-        mergeParams params = let events = concat (toList (map (toList . (^. contentChanges)) params))
-                              in DidChangeTextDocumentParams (head params ^. textDocument) (List events)
+        mergeParams ps = let events = concat (toList (map (toList . (^. contentChanges)) ps))
+                         in DidChangeTextDocumentParams (head ps ^. textDocument) (List events)
 updateState _ = return ()
 
 

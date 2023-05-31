@@ -9,6 +9,8 @@ import Data.Algorithm.DiffOutput
 import qualified Data.ByteString.Lazy.Char8 as B
 import Data.List
 import Language.LSP.Types
+import Prelude hiding (exp)
+
 
 -- | An exception that can be thrown during a 'Haskell.LSP.Test.Session.Session'
 data SessionException = Timeout (Maybe FromServerMessage)
