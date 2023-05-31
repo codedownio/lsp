@@ -1,12 +1,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE EmptyCase #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeInType #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE TypeInType #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -27,7 +22,6 @@ module Language.LSP.Test.Parsing (
   , publishDiagnosticsNotification
   ) where
 
-import Control.Applicative
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.IO.Unlift
@@ -109,15 +103,11 @@ satisfyMaybeM pred = do
       return a
     Nothing -> undefined -- empty
 
-named :: Monad m => T.Text -> Session m a -> Session m a
-named s (Session x) = undefined -- Session (Data.Conduit.Parser.named s x)
-
-
 -- | Matches a request or a notification coming from the server.
 -- Doesn't match Custom Messages
 message :: (MonadLoggerIO n, MonadUnliftIO n) => SServerMethod m -> Session n (ServerMessage m)
 message (SCustomMethod _) = error "message can't be used with CustomMethod, use customRequest or customNotification instead"
-message m1 = named (T.pack $ "Request for: " <> show m1) $ satisfyMaybe $ \case
+message m1 = satisfyMaybe $ \case
   FromServerMess m2 msg -> do
     res <- mEqServer m1 m2
     case res of
@@ -126,7 +116,7 @@ message m1 = named (T.pack $ "Request for: " <> show m1) $ satisfyMaybe $ \case
   _ -> Nothing
 
 customRequest :: (MonadLoggerIO m, MonadUnliftIO m) => T.Text -> Session m (ServerMessage (CustomMethod :: Method FromServer Request))
-customRequest m = named m $ satisfyMaybe $ \case
+customRequest m = satisfyMaybe $ \case
   FromServerMess m1 msg -> case splitServerMethod m1 of
     IsServerEither -> case msg of
       ReqMess _ | m1 == SCustomMethod m -> Just msg
@@ -135,7 +125,7 @@ customRequest m = named m $ satisfyMaybe $ \case
   _ -> Nothing
 
 customNotification :: (MonadLoggerIO m, MonadUnliftIO m) => T.Text -> Session m (ServerMessage (CustomMethod :: Method FromServer Notification))
-customNotification m = named m $ satisfyMaybe $ \case
+customNotification m = satisfyMaybe $ \case
   FromServerMess m1 msg -> case splitServerMethod m1 of
     IsServerEither -> case msg of
       NotMess _ | m1 == SCustomMethod m -> Just msg
@@ -145,7 +135,7 @@ customNotification m = named m $ satisfyMaybe $ \case
 
 -- | Matches if the message is a notification.
 anyNotification :: (MonadLoggerIO m, MonadUnliftIO m) => Session m FromServerMessage
-anyNotification = named "Any notification" $ satisfy $ \case
+anyNotification = satisfy $ \case
   FromServerMess m msg -> case splitServerMethod m of
     IsServerNot -> True
     IsServerEither -> case msg of
@@ -156,7 +146,7 @@ anyNotification = named "Any notification" $ satisfy $ \case
 
 -- | Matches if the message is a request.
 anyRequest :: (MonadLoggerIO m, MonadUnliftIO m) => Session m FromServerMessage
-anyRequest = named "Any request" $ satisfy $ \case
+anyRequest = satisfy $ \case
   FromServerMess m _ -> case splitServerMethod m of
     IsServerReq -> True
     _ -> False
@@ -164,13 +154,13 @@ anyRequest = named "Any request" $ satisfy $ \case
 
 -- | Matches if the message is a response.
 anyResponse :: (MonadLoggerIO m, MonadUnliftIO m) => Session m FromServerMessage
-anyResponse = named "Any response" $ satisfy $ \case
+anyResponse = satisfy $ \case
   FromServerMess _ _ -> False
   FromServerRsp _ _ -> True
 
 -- | Matches a response coming from the server.
 response :: (MonadLoggerIO n, MonadUnliftIO n) => SMethod (m :: Method FromClient Request) -> Session n (ResponseMessage m)
-response m1 = named (T.pack $ "Response for: " <> show m1) $ satisfyMaybe $ \case
+response m1 = satisfyMaybe $ \case
   FromServerRsp m2 msg -> do
     HRefl <- runEq mEqClient m1 m2
     pure msg
@@ -178,7 +168,7 @@ response m1 = named (T.pack $ "Response for: " <> show m1) $ satisfyMaybe $ \cas
 
 -- | Like 'response', but matches a response for a specific id.
 responseForId :: (MonadLoggerIO n, MonadUnliftIO n) => SMethod (m :: Method FromClient Request) -> LspId m -> Session n (ResponseMessage m)
-responseForId m lid = named (T.pack $ "Response for id: " ++ show lid) $ do
+responseForId m lid = do
   satisfyMaybe $ \msg -> do
     case msg of
       FromServerMess _ _ -> Nothing
@@ -193,7 +183,7 @@ anyMessage = satisfy (const True)
 
 -- | Matches if the message is a log message notification or a show message notification/request.
 loggingNotification :: (MonadLoggerIO m, MonadUnliftIO m) => Session m FromServerMessage
-loggingNotification = named "Logging notification" $ satisfy shouldSkip
+loggingNotification = satisfy shouldSkip
   where
     shouldSkip (FromServerMess SWindowLogMessage _) = True
     shouldSkip (FromServerMess SWindowShowMessage _) = True
@@ -210,7 +200,7 @@ isLogNotification _ = False
 -- | Matches a 'Language.LSP.Types.TextDocumentPublishDiagnostics'
 -- (textDocument/publishDiagnostics) notification.
 publishDiagnosticsNotification :: (MonadLoggerIO m, MonadUnliftIO m) => Session m (Message TextDocumentPublishDiagnostics)
-publishDiagnosticsNotification = named "Publish diagnostics notification" $
+publishDiagnosticsNotification =
   satisfyMaybe $ \msg -> case msg of
     FromServerMess STextDocumentPublishDiagnostics diags -> Just diags
     _ -> Nothing
