@@ -9,6 +9,7 @@ import Data.Algorithm.DiffOutput
 import qualified Data.ByteString.Lazy.Char8 as B
 import Data.List
 import Language.LSP.Protocol.Message
+import Prelude hiding (exp)
 
 
 -- | An exception that can be thrown during a 'Haskell.LSP.Test.Session.Session'

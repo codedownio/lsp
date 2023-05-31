@@ -40,7 +40,17 @@ library
     , lsp-types:Language.LSP.Protocol.Message
     , lsp-types:Language.LSP.Protocol.Capabilities
     , parser-combinators:Control.Applicative.Combinators
-
+  default-extensions:  LambdaCase
+                     , OverloadedStrings
+                     , ScopedTypeVariables
+                     , FlexibleContexts
+                     , FlexibleInstances
+                     , GeneralizedNewtypeDeriving
+                     , MultiParamTypeClasses
+                     , NumericUnderscores
+                     , NamedFieldPuns
+                     , DuplicateRecordFields
+                     , QuasiQuotes
   build-depends:
     , aeson
     , aeson-pretty
@@ -68,11 +78,13 @@ library
     , retry
     , row-types
     , some
+    , string-interpolate
     , text
     , time
     , transformers
     , unliftio
     , unliftio-core
+    , unordered-containers
 
   if os(windows)
     build-depends: Win32
@@ -87,7 +99,9 @@ library
     Language.LSP.Test.Process
     Language.LSP.Test.Server
     Language.LSP.Test.Session
-
+    Language.LSP.Test.Session.Core
+    Language.LSP.Test.Session.UpdateState
+    Language.LSP.Test.Types
   ghc-options:        -W
 
 test-suite tests
@@ -114,7 +128,7 @@ test-suite tests
     , process
     , text
     , unliftio
-
+    , unordered-containers
 
 test-suite func-test
   type:             exitcode-stdio-1.0
@@ -132,7 +146,6 @@ test-suite func-test
     , parser-combinators
     , process
     , unliftio
-
 
 test-suite example
   type:               exitcode-stdio-1.0

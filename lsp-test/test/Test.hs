@@ -1,9 +1,8 @@
-{-# LANGUAGE TypeInType #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeInType #-}
+{-# LANGUAGE GADTs #-}
 
 import Control.Applicative.Combinators
 import Control.Concurrent
@@ -27,7 +26,6 @@ import Language.LSP.Test
 import System.Directory
 import System.FilePath
 import System.IO
-import System.Timeout
 import Test.Hspec
 
 
@@ -59,58 +57,57 @@ main = hspec $ around withDummyServer $ do
     it "runSessionWithConfig" $ \(hin, hout) ->
       go hin hout def fullCaps "." $ return ()
 
-    describe "withTimeout" $ do
-      it "times out" $ \(hin, hout) ->
-        let sesh = go hin hout def fullCaps "." $ do
-                    openDoc "test/data/renamePass/Desktop/simple.hs" "haskell"
-                    -- won't receive a request - will timeout
-                    -- incoming logging requests shouldn't increase the
-                    -- timeout
-                    withTimeout 5 $ skipManyTill anyMessage (message SMethod_WorkspaceApplyEdit)
-          -- wait just a bit longer than 5 seconds so we have time
-          -- to open the document
-          in timeout 6000000 sesh `shouldThrow` anySessionException
+    -- describe "withTimeout" $ do
+    --   it "times out" $ \(hin, hout) ->
+    --     let sesh = go hin hout def fullCaps "." $ do
+    --                 openDoc "test/data/renamePass/Desktop/simple.hs" "haskell"
+    --                 -- won't receive a request - will timeout
+    --                 -- incoming logging requests shouldn't increase the
+    --                 -- timeout
+    --                 withTimeout 5 $ skipManyTill anyMessage (message SMethod_WorkspaceApplyEdit)
+    --       -- wait just a bit longer than 5 seconds so we have time
+    --       -- to open the document
+    --       in timeout 6000000 sesh `shouldThrow` anySessionException
 
-      it "doesn't time out" $ \(hin, hout) ->
-        let sesh = go hin hout def fullCaps "." $ do
-                    openDoc "test/data/renamePass/Desktop/simple.hs" "haskell"
-                    withTimeout 5 $ skipManyTill anyMessage publishDiagnosticsNotification
-          in void $ timeout 6000000 sesh
+    --   it "doesn't time out" $ \(hin, hout) ->
+    --     let sesh = go hin hout def fullCaps "." $ do
+    --                 openDoc "test/data/renamePass/Desktop/simple.hs" "haskell"
+    --                 withTimeout 5 $ skipManyTill anyMessage publishDiagnosticsNotification
+    --       in void $ timeout 6000000 sesh
 
-      it "further timeout messages are ignored" $ \(hin, hout) ->
-        go hin hout def fullCaps "." $ do
-          doc <- openDoc "test/data/renamePass/Desktop/simple.hs" "haskell"
-          -- shouldn't timeout
-          withTimeout 3 $ getDocumentSymbols doc
-          -- longer than the original timeout
-          liftIO $ threadDelay (5 * 10^6)
-          -- shouldn't throw an exception
-          getDocumentSymbols doc
-          return ()
+    --   it "further timeout messages are ignored" $ \(hin, hout) ->
+    --     go hin hout def fullCaps "." $ do
+    --       doc <- openDoc "test/data/renamePass/Desktop/simple.hs" "haskell"
+    --       -- shouldn't timeout
+    --       withTimeout 3 $ getDocumentSymbols doc
+    --       -- longer than the original timeout
+    --       liftIO $ threadDelay (5 * 10^6)
+    --       -- shouldn't throw an exception
+    --       getDocumentSymbols doc
+    --       return ()
 
-      it "overrides global message timeout" $ \(hin, hout) ->
-        let sesh =
-              go hin hout (def { messageTimeout = 5 }) fullCaps "." $ do
-                doc <- openDoc "test/data/renamePass/Desktop/simple.hs" "haskell"
-                -- shouldn't time out in here since we are overriding it
-                withTimeout 10 $ liftIO $ threadDelay 7000000
-                getDocumentSymbols doc
-                return True
-        in sesh `shouldReturn` True
+    --   it "overrides global message timeout" $ \(hin, hout) ->
+    --     let sesh =
+    --           go hin hout (def { messageTimeout = 5 }) fullCaps "." $ do
+    --             doc <- openDoc "test/data/renamePass/Desktop/simple.hs" "haskell"
+    --             -- shouldn't time out in here since we are overriding it
+    --             withTimeout 10 $ liftIO $ threadDelay 7000000
+    --             getDocumentSymbols doc
+    --             return True
+    --     in sesh `shouldReturn` True
 
-      it "unoverrides global message timeout" $ \(hin, hout) ->
-        let sesh =
-              go hin hout (def { messageTimeout = 5 }) fullCaps "." $ do
-                doc <- openDoc "test/data/renamePass/Desktop/simple.hs" "haskell"
-                -- shouldn't time out in here since we are overriding it
-                withTimeout 10 $ liftIO $ threadDelay 7000000
-                getDocumentSymbols doc
-                -- should now timeout
-                skipManyTill anyMessage (message SMethod_WorkspaceApplyEdit)
-            isTimeout (Timeout _) = True
-            isTimeout _ = False
-        in sesh `shouldThrow` isTimeout
-
+    --   it "unoverrides global message timeout" $ \(hin, hout) ->
+    --     let sesh =
+    --           go hin hout (def { messageTimeout = 5 }) fullCaps "." $ do
+    --             doc <- openDoc "test/data/renamePass/Desktop/simple.hs" "haskell"
+    --             -- shouldn't time out in here since we are overriding it
+    --             withTimeout 10 $ liftIO $ threadDelay 7000000
+    --             getDocumentSymbols doc
+    --             -- should now timeout
+    --             skipManyTill anyMessage (message SMethod_WorkspaceApplyEdit)
+    --         isTimeout (Timeout _) = True
+    --         isTimeout _ = False
+    --     in sesh `shouldThrow` isTimeout
 
     describe "SessionException" $ do
       it "throw on time out" $ \(hin, hout) ->

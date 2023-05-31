@@ -8,7 +8,6 @@ import Language.LSP.Protocol.Types
 import Language.LSP.Test
 import System.Process
 
-
 main = runStdoutLoggingT $ runSession (shell "sleep 999999999") fullCaps "test/data/" $ do
   doc <- openDoc "Rename.hs" "haskell"
 
@@ -17,7 +16,7 @@ main = runStdoutLoggingT $ runSession (shell "sleep 999999999") fullCaps "test/d
 
   -- Send requests and notifications and receive responses
   rsp <- request SMethod_TextDocumentDocumentSymbol $
-          DocumentSymbolParams Nothing Nothing doc
+    DocumentSymbolParams Nothing Nothing doc
   liftIO $ print rsp
 
   -- Or use one of the helper functions

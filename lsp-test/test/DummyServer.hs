@@ -1,25 +1,26 @@
-{-# LANGUAGE TypeInType #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE TypeInType #-}
 {-# LANGUAGE TypeApplications #-}
+
 module DummyServer where
 
 import Control.Monad
 import Control.Monad.Reader
 import Data.Aeson hiding (defaultOptions, Null)
-import qualified Data.Map.Strict as M
 import Data.List (isSuffixOf)
+import qualified Data.Map.Strict as M
+import Data.Proxy
 import Data.String
-import UnliftIO.Concurrent
+import Language.LSP.Protocol.Message
+import Language.LSP.Protocol.Types
 import Language.LSP.Server
-import System.IO
-import UnliftIO
 import System.Directory
 import System.FilePath
+import System.IO
 import System.Process
-import Language.LSP.Protocol.Types
-import Language.LSP.Protocol.Message
-import Data.Proxy
+import UnliftIO
+import UnliftIO.Concurrent
+
 
 withDummyServer :: ((Handle, Handle) -> IO ()) -> IO ()
 withDummyServer f = do
@@ -43,8 +44,8 @@ withDummyServer f = do
     (const $ f (hinWrite, houtRead))
 
 
-data HandlerEnv = HandlerEnv
-  { relRegToken :: MVar (RegistrationToken Method_WorkspaceDidChangeWatchedFiles)
+data HandlerEnv = HandlerEnv {
+  relRegToken :: MVar (RegistrationToken Method_WorkspaceDidChangeWatchedFiles)
   , absRegToken :: MVar (RegistrationToken Method_WorkspaceDidChangeWatchedFiles)
   }
 
@@ -98,7 +99,7 @@ handlers =
                 void $
                   forkIO $
                     do
-                      threadDelay (2 * 10 ^ 6)
+                      threadDelay (2 * 10^(6 :: Int))
                       runInIO $
                         sendNotification SMethod_TextDocumentPublishDiagnostics $
                           PublishDiagnosticsParams uri Nothing [diag]
@@ -242,5 +243,5 @@ handlers =
         let tokens = makeSemanticTokens defaultSemanticTokensLegend [SemanticTokenAbsolute 0 1 2 SemanticTokenTypes_Type []]
         case tokens of
           Left t -> resp $ Left $ ResponseError (InR ErrorCodes_InternalError) t Nothing
-          Right tokens -> resp $ Right $ InL tokens
+          Right toks -> resp $ Right $ InL toks
     ]
