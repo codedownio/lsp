@@ -1,17 +1,18 @@
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE GADTs, OverloadedStrings #-}
+{-# LANGUAGE GADTs #-}
+
 module Main where
 
+import Control.Concurrent
+import Control.Monad
+import Control.Monad.IO.Class
+import Data.IORef
 import Language.LSP.Server
 import qualified Language.LSP.Test as Test
 import Language.LSP.Types
-import Control.Monad.IO.Class
-import Control.Monad
-import System.Process
 import System.Environment
+import System.Process
 import System.Time.Extra
-import Control.Concurrent
-import Data.IORef
 
 handlers :: Handlers (LspM ())
 handlers = mconcat
@@ -28,8 +29,8 @@ handlers = mconcat
   ]
 
 server :: ServerDefinition ()
-server = ServerDefinition
-  { onConfigurationChange = const $ const $ Right ()
+server = ServerDefinition {
+  onConfigurationChange = const $ const $ Right ()
   , defaultConfig = ()
   , doInitialize = \env _req -> pure $ Right env
   , staticHandlers = handlers
@@ -44,7 +45,7 @@ main = do
 
   n <- read . head <$> getArgs
 
-  forkIO $ void $ runServerWithHandles mempty mempty hinRead houtWrite server
+  _ <- forkIO $ void $ runServerWithHandles mempty mempty hinRead houtWrite server
   liftIO $ putStrLn $ "Starting " <> show n <> " rounds"
 
   i <- newIORef 0
@@ -63,4 +64,3 @@ main = do
       pure ()
     end <- liftIO start
     liftIO $ putStrLn $ "Completed " <> show n <> " rounds in " <> showDuration end
-

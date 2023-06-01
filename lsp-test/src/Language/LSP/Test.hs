@@ -280,16 +280,6 @@ runSessionWithHandles' servProc servIn servOut config' caps root session = do
         (FromServerRsp SShutdown _) -> return ()
         _                           -> listenServer serverOut ctx
 
-    -- | Is this message allowed to be sent by the server between the intialize
-    -- request and response?
-    -- https://microsoft.github.io/language-server-protocol/specifications/specification-3-15/#initialize
-    checkLegalBetweenMessage :: FromServerMessage -> Session m ()
-    checkLegalBetweenMessage (FromServerMess SWindowShowMessage _) = pure ()
-    checkLegalBetweenMessage (FromServerMess SWindowLogMessage _) = pure ()
-    checkLegalBetweenMessage (FromServerMess STelemetryEvent _) = pure ()
-    checkLegalBetweenMessage (FromServerMess SWindowShowMessageRequest _) = pure ()
-    checkLegalBetweenMessage msg = throwIO (IllegalInitSequenceMessage msg)
-
 -- | Check environment variables to override the config
 envOverrideConfig :: SessionConfig -> IO SessionConfig
 envOverrideConfig cfg = do
@@ -348,10 +338,7 @@ sendRequest :: (
     -> MessageParams m -- ^ The request parameters.
     -> Session n (LspId m) -- ^ The id of the request that was sent.
 sendRequest meth ps = do
-  ss <- asks sessionState
-  idn <- curReqId <$> (readMVar ss)
-  modifyMVar_ ss $ \c -> pure (c { curReqId = idn+1 })
-  let lspId = IdInt idn
+  lspId <- IdInt <$> modifyStatePure (\c -> (c { curReqId = curReqId c + 1 }, curReqId c))
 
   let mess = RequestMessage "2.0" lspId meth ps
 
@@ -375,10 +362,7 @@ sendNotification :: (
 -- Open a virtual file if we send a did open text document notification
 sendNotification STextDocumentDidOpen ps = do
   let n = NotificationMessage "2.0" STextDocumentDidOpen ps
-  ss <- asks sessionState
-  oldVFS <- vfs <$> (readMVar ss)
-  let newVFS = flip execState oldVFS $ openVFS mempty n
-  modifyMVar_ ss (\s -> pure (s { vfs = newVFS }))
+  modifyStatePure_ (\s -> (s { vfs = flip execState (vfs s) $ openVFS mempty n }))
   sendMessage n
 
 -- Close a virtual file if we send a close text document notification
@@ -392,10 +376,7 @@ sendNotification STextDocumentDidClose ps = do
 
 sendNotification STextDocumentDidChange ps = do
   let n = NotificationMessage "2.0" STextDocumentDidChange ps
-  ss <- asks sessionState
-  oldVFS <- vfs <$> readMVar ss
-  let newVFS = flip execState oldVFS $ changeFromClientVFS mempty n
-  modifyMVar_ ss (\s -> pure (s { vfs = newVFS }))
+  modifyStatePure_ (\s -> s {vfs = flip execState (vfs s) $ changeFromClientVFS mempty n})
   sendMessage n
 
 sendNotification meth ps =
@@ -665,42 +646,47 @@ getCompletions doc pos = do
     InR (CompletionList _ (List items')) -> return items'
 
 -- | Returns the references for the position in the document.
-getReferences :: (MonadLoggerIO m, MonadUnliftIO m, Alternative m)
-              => TextDocumentIdentifier -- ^ The document to lookup in.
-              -> Position -- ^ The position to lookup.
-              -> Bool -- ^ Whether to include declarations as references.
-              -> Session m (List Location) -- ^ The locations of the references.
+getReferences :: (
+  MonadLoggerIO m, MonadUnliftIO m, Alternative m
+  ) => TextDocumentIdentifier -- ^ The document to lookup in.
+    -> Position -- ^ The position to lookup.
+    -> Bool -- ^ Whether to include declarations as references.
+    -> Session m (List Location) -- ^ The locations of the references.
 getReferences doc pos inclDecl =
   let ctx = ReferenceContext inclDecl
       ps = ReferenceParams doc pos Nothing Nothing ctx
   in getResponseResult <$> request STextDocumentReferences ps
 
 -- | Returns the declarations(s) for the term at the specified position.
-getDeclarations :: (MonadLoggerIO m, MonadUnliftIO m, Alternative m)
-                => TextDocumentIdentifier -- ^ The document the term is in.
-                -> Position -- ^ The position the term is at.
-                -> Session m ([Location] |? [LocationLink])
+getDeclarations :: (
+  MonadLoggerIO m, MonadUnliftIO m, Alternative m
+  ) => TextDocumentIdentifier -- ^ The document the term is in.
+    -> Position -- ^ The position the term is at.
+    -> Session m ([Location] |? [LocationLink])
 getDeclarations = getDeclarationyRequest STextDocumentDeclaration DeclarationParams
 
 -- | Returns the definition(s) for the term at the specified position.
-getDefinitions :: (MonadLoggerIO m, MonadUnliftIO m, Alternative m)
-               => TextDocumentIdentifier -- ^ The document the term is in.
-               -> Position -- ^ The position the term is at.
-               -> Session m ([Location] |? [LocationLink])
+getDefinitions :: (
+  MonadLoggerIO m, MonadUnliftIO m, Alternative m
+  ) => TextDocumentIdentifier -- ^ The document the term is in.
+    -> Position -- ^ The position the term is at.
+    -> Session m ([Location] |? [LocationLink])
 getDefinitions = getDeclarationyRequest STextDocumentDefinition DefinitionParams
 
 -- | Returns the type definition(s) for the term at the specified position.
-getTypeDefinitions :: (MonadLoggerIO m, MonadUnliftIO m, Alternative m)
-                   => TextDocumentIdentifier -- ^ The document the term is in.
-                   -> Position -- ^ The position the term is at.
-                   -> Session m ([Location] |? [LocationLink])
+getTypeDefinitions :: (
+  MonadLoggerIO m, MonadUnliftIO m, Alternative m
+  ) => TextDocumentIdentifier -- ^ The document the term is in.
+    -> Position -- ^ The position the term is at.
+    -> Session m ([Location] |? [LocationLink])
 getTypeDefinitions = getDeclarationyRequest STextDocumentTypeDefinition TypeDefinitionParams
 
 -- | Returns the type definition(s) for the term at the specified position.
-getImplementations :: (MonadLoggerIO m, MonadUnliftIO m, Alternative m)
-                   => TextDocumentIdentifier -- ^ The document the term is in.
-                   -> Position -- ^ The position the term is at.
-                   -> Session m ([Location] |? [LocationLink])
+getImplementations :: (
+  MonadLoggerIO m, MonadUnliftIO m, Alternative m
+  ) => TextDocumentIdentifier -- ^ The document the term is in.
+    -> Position -- ^ The position the term is at.
+    -> Session m ([Location] |? [LocationLink])
 getImplementations = getDeclarationyRequest STextDocumentImplementation ImplementationParams
 
 

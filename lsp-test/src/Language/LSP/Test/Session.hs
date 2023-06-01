@@ -10,6 +10,7 @@ module Language.LSP.Test.Session (
   , SessionState(..)
   , runSession'
   , modifyStatePure
+  , modifyStatePure_
   , modifyStateM
   , ask
   , asks

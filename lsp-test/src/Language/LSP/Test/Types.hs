@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeInType #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Language.LSP.Test.Types (
   Session(..)
@@ -47,7 +48,11 @@ import UnliftIO.Exception
 -- 'Language.LSP.Test.sendNotification'.
 
 newtype Session m a = Session { unwrapSession :: ReaderT SessionContext m a }
-  deriving (Functor, Applicative, Monad, MonadIO, MonadLogger, MonadLoggerIO, Alternative, MonadThrow, MonadReader SessionContext, MonadUnliftIO, MonadMask, MonadCatch)
+  deriving (Functor, Applicative, Alternative, Monad, MonadIO, MonadLogger, MonadLoggerIO, MonadThrow, MonadReader SessionContext, MonadUnliftIO, MonadMask, MonadCatch)
+
+instance (Alternative m) => Alternative (LoggingT m) where
+  empty = LoggingT (\_ -> empty)
+  LoggingT x <|> LoggingT y = LoggingT (\f -> x f <|> y f)
 
 #if __GLASGOW_HASKELL__ >= 806
 instance MonadIO m => MonadFail (Session m) where

@@ -17,6 +17,7 @@ module Language.LSP.Test.Parsing (
   , anyMessage
   , loggingNotification
   , isLogNotification
+  , checkLegalBetweenMessage
   , publishDiagnosticsNotification
   ) where
 
@@ -87,13 +88,13 @@ satisfyMaybeM pred = do
       lastMsg <- lastReceivedMessage <$> (asks sessionState >>= readMVar)
       throwIO (Timeout lastMsg)
     Just msg -> do
-      modifyStatePure (\s -> s { lastReceivedMessage = Just msg })
+      modifyStatePure_ (\s -> s { lastReceivedMessage = Just msg })
 
       pred msg >>= \case
         Just a -> do
           logMsg LogServer msg
           return a
-        Nothing -> undefined -- empty
+        Nothing -> satisfyMaybeM pred
 
 -- | Matches a request or a notification coming from the server.
 -- Doesn't match Custom Messages
@@ -182,6 +183,16 @@ isLogNotification (FromServerMess SWindowShowMessage _) = True
 isLogNotification (FromServerMess SWindowShowMessageRequest _) = True
 isLogNotification (FromServerMess SWindowShowDocument _) = True
 isLogNotification _ = False
+
+-- | Is this message allowed to be sent by the server between the intialize
+-- request and response?
+-- https://microsoft.github.io/language-server-protocol/specifications/specification-3-15/#initialize
+checkLegalBetweenMessage :: (MonadIO m) => FromServerMessage -> Session m ()
+checkLegalBetweenMessage (FromServerMess SWindowShowMessage _) = pure ()
+checkLegalBetweenMessage (FromServerMess SWindowLogMessage _) = pure ()
+checkLegalBetweenMessage (FromServerMess STelemetryEvent _) = pure ()
+checkLegalBetweenMessage (FromServerMess SWindowShowMessageRequest _) = pure ()
+checkLegalBetweenMessage msg = throwIO (IllegalInitSequenceMessage msg)
 
 -- | Matches a 'Language.LSP.Types.TextDocumentPublishDiagnostics'
 -- (textDocument/publishDiagnostics) notification.

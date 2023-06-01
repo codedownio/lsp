@@ -6,6 +6,7 @@
 module Language.LSP.Test.Session.UpdateState (
   updateState
   , modifyStatePure
+  , modifyStatePure_
   , modifyStateM
 
   , documentChangeUri
@@ -40,8 +41,8 @@ updateState :: (
   MonadLoggerIO m, MonadUnliftIO m, MonadReader SessionContext m
   ) => FromServerMessage -> m ()
 updateState (FromServerMess SProgress req) = case req ^. params . value of
-  Begin _ -> modifyStatePure $ \s -> s { curProgressSessions = Set.insert (req ^. params . token) $ curProgressSessions s }
-  End _ -> modifyStatePure $ \s -> s { curProgressSessions = Set.delete (req ^. params . token) $ curProgressSessions s }
+  Begin _ -> modifyStatePure_ $ \s -> s { curProgressSessions = Set.insert (req ^. params . token) $ curProgressSessions s }
+  End _ -> modifyStatePure_ $ \s -> s { curProgressSessions = Set.delete (req ^. params . token) $ curProgressSessions s }
   _ -> pure ()
 
 -- Keep track of dynamic capability registration
@@ -52,14 +53,14 @@ updateState (FromServerMess SClientRegisterCapability req) = do
 
 updateState (FromServerMess SClientUnregisterCapability req) = do
   let List unRegs = (^. LSP.id) <$> req ^. params . unregisterations
-  modifyStatePure $ \s ->
+  modifyStatePure_ $ \s ->
     let newCurDynCaps = foldr' Map.delete (curDynCaps s) unRegs
     in s { curDynCaps = newCurDynCaps }
 
 updateState (FromServerMess STextDocumentPublishDiagnostics n) = do
   let List diags = n ^. params . diagnostics
       doc = n ^. params . uri
-  modifyStatePure $ \s ->
+  modifyStatePure_ $ \s ->
     let newDiags = Map.insert (toNormalizedUri doc) diags (curDiagnostics s)
       in s { curDiagnostics = newDiags }
 
@@ -96,7 +97,7 @@ updateState (FromServerMess SWorkspaceApplyEdit r) = do
       latestVersions = map ((^. textDocument) . last) sortedVersions
 
   forM_ latestVersions $ \(VersionedTextDocumentIdentifier u v) ->
-    modifyStatePure $ \s ->
+    modifyStatePure_ $ \s ->
       let oldVFS = vfs s
           update (VirtualFile oldV file_ver t) = VirtualFile (fromMaybe oldV v) (file_ver +1) t
           newVFS = oldVFS & vfsMap . ix (toNormalizedUri u) %~ update
@@ -154,9 +155,13 @@ updateState (FromServerMess SWorkspaceApplyEdit r) = do
 updateState _ = return ()
 
 
-
-modifyStatePure :: (MonadUnliftIO m, MonadReader SessionContext m) => (SessionState -> SessionState) -> m ()
+modifyStatePure :: (MonadUnliftIO m, MonadReader SessionContext m) => (SessionState -> (SessionState, a)) -> m a
 modifyStatePure f = do
+  ss <- asks sessionState
+  modifyMVar ss (pure . f)
+
+modifyStatePure_ :: (MonadUnliftIO m, MonadReader SessionContext m) => (SessionState -> SessionState) -> m ()
+modifyStatePure_ f = do
   ss <- asks sessionState
   modifyMVar_ ss (pure . f)
 

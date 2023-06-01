@@ -1,34 +1,28 @@
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
 
-import DummyServer
-import           Test.Hspec
-import           Data.Aeson
-import           Data.Default
+import Control.Applicative.Combinators
+import Control.Concurrent
+import Control.Lens hiding (List, Iso)
+import Control.Monad
+import Control.Monad.IO.Class
+import Data.Aeson
+import Data.Default
+import Data.Either
 import qualified Data.HashMap.Strict as HM
-import           Data.Either
-import           Data.Maybe
+import Data.Maybe
 import qualified Data.Text as T
-import           Data.Type.Equality
-import           Control.Applicative.Combinators
-import           Control.Concurrent
-import           Control.Monad.IO.Class
-import           Control.Monad
-import           Control.Lens hiding (List, Iso)
-import           Language.LSP.Test
-import           Language.LSP.Types
-import           Language.LSP.Types.Lens hiding
-  (capabilities, message, rename, applyEdit)
+import Data.Type.Equality
+import DummyServer
+import Language.LSP.Test
+import Language.LSP.Types
+import Language.LSP.Types.Capabilities as LSP
 import qualified Language.LSP.Types.Lens as LSP
-import           Language.LSP.Types.Capabilities as LSP
-import           System.Directory
-import           System.FilePath
-import           System.Timeout
+import Language.LSP.Types.Lens hiding (capabilities, message, rename, applyEdit)
+import System.Directory
+import System.FilePath
+import System.Timeout
+import Test.Hspec
 
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
