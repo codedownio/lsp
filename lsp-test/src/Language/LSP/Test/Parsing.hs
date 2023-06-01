@@ -91,9 +91,7 @@ satisfyMaybeM pred = do
       modifyStatePure_ (\s -> s { lastReceivedMessage = Just msg })
 
       pred msg >>= \case
-        Just a -> do
-          logMsg LogServer msg
-          return a
+        Just a -> return a
         Nothing -> satisfyMaybeM pred
 
 -- | Matches a request or a notification coming from the server.

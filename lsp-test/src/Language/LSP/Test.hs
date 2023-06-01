@@ -232,7 +232,7 @@ runSessionWithHandles' servProc servIn servOut config' caps root session = do
                                           caps
                                           (Just TraceVerbose)
                                           (maybeN (List <$> initialWorkspaceFolders conf))
-  runSession' servIn servOut servProc listenServer conf caps root exitServer $ do
+  runSession' servIn servOut servProc conf caps root exitServer $ do
     -- Wrap the session around initialize and shutdown calls
     initReqId <- sendRequest SInitialize initializeParams
 
@@ -265,20 +265,6 @@ runSessionWithHandles' servProc servIn servOut config' caps root session = do
     -- | Asks the server to shutdown and exit politely
     exitServer :: Session m ()
     exitServer = request_ SShutdown Empty >> sendNotification SExit Empty
-
-    -- | Listens to the server output until the shutdown ACK,
-    -- makes sure it matches the record and signals any semaphores
-    listenServer :: Handle -> SessionContext -> m ()
-    listenServer serverOut ctx = do
-      msgBytes <- liftIO $ getNextMessage serverOut
-
-      msg <- modifyMVar (requestMap ctx) $ \reqMap ->
-        pure $ decodeFromServerMsg reqMap msgBytes
-      writeChan (messageChan ctx) msg
-
-      case msg of
-        (FromServerRsp SShutdown _) -> return ()
-        _                           -> listenServer serverOut ctx
 
 -- | Check environment variables to override the config
 envOverrideConfig :: SessionConfig -> IO SessionConfig

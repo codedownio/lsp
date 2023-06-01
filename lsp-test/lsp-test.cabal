@@ -45,6 +45,7 @@ library
                      , NumericUnderscores
                      , NamedFieldPuns
                      , DuplicateRecordFields
+                     , QuasiQuotes
   build-depends:       base >= 4.10 && < 5
                      , lsp-types == 1.5.* || == 1.6.*
                      , lsp == 1.5.* || == 1.6.*
@@ -70,6 +71,7 @@ library
                      , parser-combinators >= 1.2
                      , process >= 1.6
                      , retry
+                     , string-interpolate
                      , text
                      , transformers
                      , unliftio
