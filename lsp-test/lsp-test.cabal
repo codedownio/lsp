@@ -40,7 +40,17 @@ library
     , lsp-types:Language.LSP.Protocol.Message
     , lsp-types:Language.LSP.Protocol.Capabilities
     , parser-combinators:Control.Applicative.Combinators
-
+  default-extensions:  LambdaCase
+                     , OverloadedStrings
+                     , ScopedTypeVariables
+                     , FlexibleContexts
+                     , FlexibleInstances
+                     , GeneralizedNewtypeDeriving
+                     , MultiParamTypeClasses
+                     , NumericUnderscores
+                     , NamedFieldPuns
+                     , DuplicateRecordFields
+                     , QuasiQuotes
   build-depends:
     , aeson
     , aeson-pretty
@@ -61,14 +71,20 @@ library
     , lens
     , lsp                   ^>=2.1
     , lsp-types             ^>=2.0
+    , monad-logger
     , mtl                   <2.4
     , parser-combinators    >=1.2
     , process               >=1.6
+    , retry
     , row-types
     , some
+    , string-interpolate
     , text
     , time
     , transformers
+    , unliftio
+    , unliftio-core
+    , unordered-containers
 
   if os(windows)
     build-depends: Win32
@@ -79,11 +95,13 @@ library
     Language.LSP.Test.Compat
     Language.LSP.Test.Decoding
     Language.LSP.Test.Exceptions
-    Language.LSP.Test.Files
     Language.LSP.Test.Parsing
+    Language.LSP.Test.Process
     Language.LSP.Test.Server
     Language.LSP.Test.Session
-
+    Language.LSP.Test.Session.Core
+    Language.LSP.Test.Session.UpdateState
+    Language.LSP.Test.Types
   ghc-options:        -W
 
 test-suite tests
@@ -104,12 +122,13 @@ test-suite tests
     , lens
     , lsp           ^>=2.1
     , lsp-test
+    , monad-logger
     , mtl           <2.4
     , parser-combinators
     , process
     , text
     , unliftio
-
+    , unordered-containers
 
 test-suite func-test
   type:             exitcode-stdio-1.0
@@ -123,10 +142,10 @@ test-suite func-test
     , lens
     , lsp
     , lsp-test
+    , monad-logger
     , parser-combinators
     , process
     , unliftio
-
 
 test-suite example
   type:               exitcode-stdio-1.0
@@ -136,7 +155,9 @@ test-suite example
   build-depends:
     , base
     , lsp-test
+    , monad-logger
     , parser-combinators
+    , process
   build-tool-depends: lsp:lsp-demo-reactor-server
 
 benchmark simple-bench
@@ -151,4 +172,3 @@ benchmark simple-bench
     , lsp
     , lsp-test
     , process
-

@@ -1,0 +1,16 @@
+
+resolver: lts-22.15
+
+packages:
+- ./lsp
+- ./lsp-types
+- ./lsp-test
+
+nix:
+  packages:
+  - icu
+  - zlib
+
+extra-deps:
+- co-log-core-0.3.2.0
+- row-types-1.0.1.2
