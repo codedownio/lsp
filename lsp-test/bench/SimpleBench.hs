@@ -1,20 +1,20 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DuplicateRecordFields #-}
+
 module Main where
 
+import Control.Concurrent
+import Control.Monad
+import Control.Monad.IO.Class
+import Data.IORef
+import Language.LSP.Protocol.Message
+import Language.LSP.Protocol.Types
 import Language.LSP.Server
 import qualified Language.LSP.Test as Test
-import Language.LSP.Protocol.Types
-import Language.LSP.Protocol.Message
-import Control.Monad.IO.Class
-import Control.Monad
-import System.Process hiding (env)
 import System.Environment
+import System.Process
+import System.Process hiding (env)
 import System.Time.Extra
-import Control.Concurrent
-import Data.IORef
 
 handlers :: Handlers (LspM ())
 handlers = mconcat
@@ -31,9 +31,8 @@ handlers = mconcat
   ]
 
 server :: ServerDefinition ()
-server = ServerDefinition
-  { parseConfig = const $ const $ Right ()
-  , onConfigChange = const  $ pure ()
+server = ServerDefinition {
+  onConfigurationChange = const $ const $ Right ()
   , defaultConfig = ()
   , configSection = "demo"
   , doInitialize = \env _req -> pure $ Right env
@@ -68,4 +67,3 @@ main = do
       pure ()
     end <- liftIO start
     liftIO $ putStrLn $ "Completed " <> show n <> " rounds in " <> showDuration end
-

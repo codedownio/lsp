@@ -41,28 +41,33 @@ import           Data.Aeson                             hiding (Error, Null,
 import           Data.Aeson.Lens                        ()
 import           Data.Aeson.Types                       hiding (Error, Null,
                                                          Options)
-import qualified Data.ByteString.Lazy                   as BSL
+
 import           Data.Foldable                          (traverse_)
-import qualified Data.Functor.Product                   as P
 import           Data.IxMap
-import           Data.List
+import           Data.List                              hiding (singleton)
 import           Data.List.NonEmpty                     (NonEmpty (..))
-import qualified Data.Map.Strict                        as Map
 import           Data.Maybe
 import           Data.Monoid
 import           Data.Row
 import           Data.String                            (fromString)
-import qualified Data.Text                              as T
-import qualified Data.Text.Lazy.Encoding                as TL
 import           Data.Text.Prettyprint.Doc
-import qualified Language.LSP.Protocol.Lens             as L
+import           GHC.TypeLits (symbolVal)
 import           Language.LSP.Protocol.Message
 import           Language.LSP.Protocol.Types
 import           Language.LSP.Protocol.Utils.SMethodMap (SMethodMap)
-import qualified Language.LSP.Protocol.Utils.SMethodMap as SMethodMap
 import           Language.LSP.Server.Core
 import           Language.LSP.VFS                       as VFS
 import           System.Exit
+import qualified Data.ByteString.Lazy                   as BSL
+import qualified Data.ByteString.Lazy as BSL
+import qualified Data.Functor.Product                   as P
+import qualified Data.Functor.Product as P
+import qualified Data.Map.Strict                        as Map
+import qualified Data.Map.Strict as Map
+import qualified Data.Text                              as T
+import qualified Data.Text.Lazy.Encoding                as TL
+import qualified Language.LSP.Protocol.Lens             as L
+import qualified Language.LSP.Protocol.Utils.SMethodMap as SMethodMap
 
 data LspProcessingLog =
   VfsLog VfsLog
