@@ -26,8 +26,8 @@ import           Control.Lens hiding (Empty)
 import           Data.Aeson hiding (Options, Error, Null)
 import           Data.Aeson.Types hiding (Options, Error, Null)
 import qualified Data.ByteString.Lazy as BSL
-import           Data.List
-import Data.List.NonEmpty (NonEmpty(..))
+import           Data.List hiding (singleton)
+import           Data.List.NonEmpty (NonEmpty(..))
 import           Data.Row
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Encoding as TL
@@ -40,7 +40,7 @@ import           Language.LSP.Server.Core
 import           Language.LSP.VFS as VFS
 import qualified Data.Functor.Product as P
 import qualified Control.Exception as E
-import           Data.Monoid 
+import           Data.Monoid
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Control.Monad.Except ()
@@ -54,7 +54,7 @@ import           Data.Text.Prettyprint.Doc
 import           System.Exit
 import           GHC.TypeLits (symbolVal)
 import           Control.Monad.State
-import           Control.Monad.Writer.Strict 
+import           Control.Monad.Writer.Strict
 import           Data.Foldable (traverse_)
 
 data LspProcessingLog =

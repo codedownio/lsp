@@ -1,17 +1,12 @@
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE OverloadedLabels #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DataKinds #-}
 -- For some reason ghc warns about not using
 -- Control.Monad.IO.Class but it's needed for
 -- MonadIO
 {-# OPTIONS_GHC -Wunused-imports #-}
+
 module Language.LSP.Test.Compat where
 
-import Data.Row
 import Data.Maybe
-import qualified Data.Text as T
 import System.IO
 
 #if MIN_VERSION_process(1,6,3)
@@ -105,7 +100,7 @@ cleanupProcess (mb_stdin, mb_stdout, mb_stderr, ph) = do
     return ()
   where ignoreSigPipe = ignoreIOError ResourceVanished ePIPE
         ignorePermDenied = ignoreIOError PermissionDenied eACCES
-    
+
 ignoreIOError :: IOErrorType -> Errno -> IO () -> IO ()
 ignoreIOError ioErrorType errno =
   C.handle $ \e -> case e of
@@ -119,6 +114,3 @@ withCreateProcess c action =
             (\(m_in, m_out, m_err, ph) -> action m_in m_out m_err ph)
 
 #endif
-
-lspTestClientInfo :: Rec ("name" .== T.Text .+ "version" .== Maybe T.Text)
-lspTestClientInfo = #name .== "lsp-test" .+ #version .== (Just CURRENT_PACKAGE_VERSION)
