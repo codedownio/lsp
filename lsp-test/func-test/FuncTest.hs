@@ -2,24 +2,25 @@
 {-# LANGUAGE GADTs, OverloadedStrings #-}
 module Main where
 
+import qualified Colog.Core as L
+import Control.Applicative.Combinators
+import Control.Exception
+import Control.Lens hiding (List, Iso)
+import Control.Monad
+import Control.Monad.IO.Class
+import Control.Monad.Logger
+import Data.Maybe
+import qualified Language.LSP.Protocol.Lens as L
+import Language.LSP.Protocol.Message
+import Language.LSP.Protocol.Types
 import Language.LSP.Server
 import qualified Language.LSP.Test as Test
-import Language.LSP.Protocol.Types
-import qualified Language.LSP.Protocol.Lens as L
-import Language.LSP.Protocol.Message 
-import Control.Monad.IO.Class
+import System.Exit
 import System.IO
-import Control.Monad
 import System.Process
-import Control.Applicative.Combinators
-import Control.Lens hiding (List, Iso)
 import Test.Hspec
-import Data.Maybe
 import UnliftIO
 import UnliftIO.Concurrent
-import Control.Exception
-import System.Exit
-import qualified Colog.Core as L
 
 main :: IO ()
 main = hspec $ do
@@ -28,7 +29,7 @@ main = hspec $ do
     it "sends end notification if thread is killed" $ do
       (hinRead, hinWrite) <- createPipe
       (houtRead, houtWrite) <- createPipe
-      
+
       killVar <- newEmptyMVar
 
       let definition = ServerDefinition
@@ -50,18 +51,18 @@ main = hspec $ do
               liftIO $ void $ forkIO $ do
                 takeMVar killVar
                 killThread tid
-      
+
       forkIO $ void $ runServerWithHandles logger (L.hoistLogAction liftIO logger) hinRead houtWrite definition
-      
-      Test.runSessionWithHandles hinWrite houtRead Test.defaultConfig Test.fullCaps "." $ do
+
+      runStdoutLoggingT $ Test.runSessionWithHandles hinWrite houtRead Test.defaultConfig Test.fullCaps "." $ do
         -- First make sure that we get a $/progress begin notification
         skipManyTill Test.anyMessage $ do
           x <- Test.message SMethod_Progress
           guard $ has (L.params . L.value . _workDoneProgressBegin) x
-          
+
         -- Then kill the thread
         liftIO $ putMVar killVar ()
-        
+
         -- Then make sure we still get a $/progress end notification
         skipManyTill Test.anyMessage $ do
           x <- Test.message SMethod_Progress
@@ -71,13 +72,13 @@ main = hspec $ do
     it "keeps track of open workspace folders" $ do
       (hinRead, hinWrite) <- createPipe
       (houtRead, houtWrite) <- createPipe
-      
+
       countVar <- newMVar 0
 
       let wf0 = WorkspaceFolder (filePathToUri "one") "Starter workspace"
           wf1 = WorkspaceFolder (filePathToUri "/foo/bar") "My workspace"
           wf2 = WorkspaceFolder (filePathToUri "/foo/baz") "My other workspace"
-          
+
           definition = ServerDefinition
             { onConfigurationChange = const $ const $ Right ()
             , defaultConfig = ()
@@ -105,22 +106,21 @@ main = hspec $ do
                     wfs `shouldContain` [wf2]
                   _ -> error "Shouldn't be here"
             ]
-                
+
       server <- async $ void $ runServerWithHandles logger (L.hoistLogAction liftIO logger) hinRead houtWrite definition
-      
+
       let config = Test.defaultConfig
             { Test.initialWorkspaceFolders = Just [wf0]
             }
-            
+
           changeFolders add rmv =
             let ev = WorkspaceFoldersChangeEvent add rmv
                 ps = DidChangeWorkspaceFoldersParams ev
             in Test.sendNotification SMethod_WorkspaceDidChangeWorkspaceFolders ps
 
-      Test.runSessionWithHandles hinWrite houtRead config Test.fullCaps "." $ do
+      runStdoutLoggingT $ Test.runSessionWithHandles hinWrite houtRead config Test.fullCaps "." $ do
         changeFolders [wf1] []
         changeFolders [wf2] [wf1]
 
       Left e <- waitCatch server
       fromException e `shouldBe` Just ExitSuccess
-      

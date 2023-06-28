@@ -1,12 +1,14 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TypeInType #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE TypeInType #-}
+{-# LANGUAGE TypeOperators #-}
 
 {-|
 Module      : Language.LSP.Test
@@ -51,6 +53,7 @@ module Language.LSP.Test
   -- ** Documents
   , createDoc
   , openDoc
+  , openDoc'
   , closeDoc
   , changeDoc
   , documentContents
@@ -101,17 +104,24 @@ module Language.LSP.Test
   , getSemanticTokens
   -- ** Capabilities
   , getRegisteredCapabilities
+  -- ** Custom requests
+  , getCustomRequest
   ) where
 
 import Control.Applicative.Combinators
 import Control.Concurrent
+import Control.Exception (throw)
 import Control.Monad
+import Control.Monad.Catch (MonadThrow)
 import Control.Monad.IO.Class
-import Control.Exception
+import Control.Monad.IO.Unlift
+import Control.Monad.Logger
+import Control.Monad.State (execState)
 import Control.Lens hiding ((.=), List, Empty)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
+import Data.Row
 import qualified Data.Text.IO as T
 import Data.Aeson hiding (Null)
 import Data.Default
@@ -119,6 +129,7 @@ import Data.List
 import Data.Maybe
 import Language.LSP.Protocol.Types
 import Language.LSP.Protocol.Message
+import Language.LSP.Protocol.Lens hiding (id, capabilities, message, executeCommand, applyEdit, rename, to)
 import qualified Language.LSP.Protocol.Lens as L
 import qualified Language.LSP.Protocol.Capabilities as C
 import Language.LSP.VFS
@@ -130,11 +141,11 @@ import Language.LSP.Test.Session
 import Language.LSP.Test.Server
 import System.Environment
 import System.IO
-import System.Directory
 import System.FilePath
 import System.Process (ProcessHandle, CreateProcess)
 import qualified System.FilePath.Glob as Glob
-import Control.Monad.State (execState)
+import UnliftIO.Directory
+import UnliftIO.Exception
 
 -- | Starts a new session.
 --
@@ -144,32 +155,35 @@ import Control.Monad.State (execState)
 -- >   let pos = Position 12 5
 -- >       params = TextDocumentPositionParams doc
 -- >   hover <- request STextdocumentHover params
-runSession :: String -- ^ The command to run the server.
+runSession :: (MonadLoggerIO m, MonadUnliftIO m, MonadThrow m)
+           => CreateProcess -- ^ The command to run the server.
            -> ClientCapabilities -- ^ The capabilities that the client should declare.
            -> FilePath -- ^ The filepath to the root directory for the session.
-           -> Session a -- ^ The session to run.
-           -> IO a
+           -> Session m a -- ^ The session to run.
+           -> m a
 runSession = runSessionWithConfig def
 
 -- | Starts a new session with a custom configuration.
-runSessionWithConfig :: SessionConfig -- ^ Configuration options for the session.
-                     -> String -- ^ The command to run the server.
+runSessionWithConfig :: (MonadLoggerIO m, MonadUnliftIO m, MonadThrow m)
+                     => SessionConfig -- ^ Configuration options for the session.
+                     -> CreateProcess -- ^ The command to run the server.
                      -> ClientCapabilities -- ^ The capabilities that the client should declare.
                      -> FilePath -- ^ The filepath to the root directory for the session.
-                     -> Session a -- ^ The session to run.
-                     -> IO a
+                     -> Session m a -- ^ The session to run.
+                     -> m a
 runSessionWithConfig = runSessionWithConfigCustomProcess id
 
 -- | Starts a new session with a custom configuration and server 'CreateProcess'.
-runSessionWithConfigCustomProcess :: (CreateProcess -> CreateProcess) -- ^ Tweak the 'CreateProcess' used to start the server.
+runSessionWithConfigCustomProcess :: (MonadLoggerIO m, MonadUnliftIO m, MonadThrow m)
+                                  => (CreateProcess -> CreateProcess) -- ^ Tweak the 'CreateProcess' used to start the server.
                                   -> SessionConfig -- ^ Configuration options for the session.
-                                  -> String -- ^ The command to run the server.
+                                  -> CreateProcess -- ^ The base CreateProcess run the server.
                                   -> ClientCapabilities -- ^ The capabilities that the client should declare.
                                   -> FilePath -- ^ The filepath to the root directory for the session.
-                                  -> Session a -- ^ The session to run.
-                                  -> IO a
+                                  -> Session m a -- ^ The session to run.
+                                  -> m a
 runSessionWithConfigCustomProcess modifyCreateProcess config' serverExe caps rootDir session = do
-  config <- envOverrideConfig config'
+  config <- liftIO $ envOverrideConfig config'
   withServer serverExe (logStdErr config) modifyCreateProcess $ \serverIn serverOut serverProc ->
     runSessionWithHandles' (Just serverProc) serverIn serverOut config caps rootDir session
 
@@ -183,35 +197,37 @@ runSessionWithConfigCustomProcess modifyCreateProcess config' serverExe caps roo
 -- > forkIO $ void $ runServerWithHandles hinRead houtWrite serverDefinition
 -- > runSessionWithHandles hinWrite houtRead defaultConfig fullCaps "." $ do
 -- >   -- ...
-runSessionWithHandles :: Handle -- ^ The input handle
+runSessionWithHandles :: (MonadLoggerIO m, MonadUnliftIO m, MonadThrow m)
+                      => Handle -- ^ The input handle
                       -> Handle -- ^ The output handle
                       -> SessionConfig
                       -> ClientCapabilities -- ^ The capabilities that the client should declare.
                       -> FilePath -- ^ The filepath to the root directory for the session.
-                      -> Session a -- ^ The session to run.
-                      -> IO a
+                      -> Session m a -- ^ The session to run.
+                      -> m a
 runSessionWithHandles = runSessionWithHandles' Nothing
 
 
-runSessionWithHandles' :: Maybe ProcessHandle
+runSessionWithHandles' :: forall m a. (MonadLoggerIO m, MonadUnliftIO m, MonadThrow m)
+                       => Maybe ProcessHandle
                        -> Handle -- ^ The input handle
                        -> Handle -- ^ The output handle
                        -> SessionConfig
                        -> ClientCapabilities -- ^ The capabilities that the client should declare.
                        -> FilePath -- ^ The filepath to the root directory for the session.
-                       -> Session a -- ^ The session to run.
-                       -> IO a
+                       -> Session m a -- ^ The session to run.
+                       -> m a
 runSessionWithHandles' serverProc serverIn serverOut config' caps rootDir session = do
-  pid <- getCurrentProcessID
-  absRootDir <- canonicalizePath rootDir
+  pid <- liftIO getCurrentProcessID
+  absRootDir <- liftIO $ canonicalizePath rootDir
 
-  config <- envOverrideConfig config'
+  config <- liftIO $ envOverrideConfig config'
 
   let initializeParams = InitializeParams Nothing
                                           -- Narrowing to Int32 here, but it's unlikely that a PID will
                                           -- be outside the range
                                           (InL $ fromIntegral pid)
-                                          (Just lspTestClientInfo)
+                                          (Just (#name .== "lsp-text" .+ #version .== (Just CURRENT_PACKAGE_VERSION)))
                                           (Just $ T.pack absRootDir)
                                           Nothing
                                           (InL $ filePathToUri absRootDir)
@@ -228,7 +244,7 @@ runSessionWithHandles' serverProc serverIn serverOut config' caps rootDir sessio
     (inBetween, initRspMsg) <- manyTill_ anyMessage (responseForId SMethod_Initialize initReqId)
 
     case initRspMsg ^. L.result of
-      Left error -> liftIO $ putStrLn ("Error while initializing: " ++ show error)
+      Left error -> logErrorN $ T.pack ("Error while initializing: " ++ show error)
       Right _ -> pure ()
 
     initRspVar <- initRsp <$> ask
@@ -249,7 +265,7 @@ runSessionWithHandles' serverProc serverIn serverOut config' caps rootDir sessio
     session
   where
   -- | Asks the server to shutdown and exit politely
-  exitServer :: Session ()
+  exitServer :: Session m ()
   exitServer = request_ SMethod_Shutdown Nothing >> sendNotification SMethod_Exit Nothing
 
   -- | Listens to the server output until the shutdown ACK,
@@ -269,12 +285,12 @@ runSessionWithHandles' serverProc serverIn serverOut config' caps rootDir sessio
   -- | Is this message allowed to be sent by the server between the intialize
   -- request and response?
   -- https://microsoft.github.io/language-server-protocol/specifications/specification-3-15/#initialize
-  checkLegalBetweenMessage :: FromServerMessage -> Session ()
+  checkLegalBetweenMessage :: FromServerMessage -> Session m ()
   checkLegalBetweenMessage (FromServerMess SMethod_WindowShowMessage _) = pure ()
   checkLegalBetweenMessage (FromServerMess SMethod_WindowLogMessage _) = pure ()
   checkLegalBetweenMessage (FromServerMess SMethod_TelemetryEvent _) = pure ()
   checkLegalBetweenMessage (FromServerMess SMethod_WindowShowMessageRequest _) = pure ()
-  checkLegalBetweenMessage msg = throw (IllegalInitSequenceMessage msg)
+  checkLegalBetweenMessage msg = throwIO (IllegalInitSequenceMessage msg)
 
 -- | Check environment variables to override the config
 envOverrideConfig :: SessionConfig -> IO SessionConfig
@@ -288,28 +304,28 @@ envOverrideConfig cfg = do
         convertVal _ = True
 
 -- | The current text contents of a document.
-documentContents :: TextDocumentIdentifier -> Session T.Text
+documentContents :: MonadLoggerIO m => TextDocumentIdentifier -> Session m T.Text
 documentContents doc = do
   vfs <- vfs <$> get
-  let Just file = vfs ^. vfsMap . at (toNormalizedUri (doc ^. L.uri))
+  let Just file = vfs ^. vfsMap . at (toNormalizedUri (doc ^. uri))
   return (virtualFileText file)
 
 -- | Parses an ApplyEditRequest, checks that it is for the passed document
 -- and returns the new content
-getDocumentEdit :: TextDocumentIdentifier -> Session T.Text
+getDocumentEdit :: MonadLoggerIO m => TextDocumentIdentifier -> Session m T.Text
 getDocumentEdit doc = do
   req <- message SMethod_WorkspaceApplyEdit
 
   unless (checkDocumentChanges req || checkChanges req) $
-    liftIO $ throw (IncorrectApplyEditRequest (show req))
+    liftIO $ throwIO (IncorrectApplyEditRequest (show req))
 
   documentContents doc
   where
     checkDocumentChanges req =
-      let changes = req ^. L.params . L.edit . L.documentChanges
+      let changes = req ^. params . edit . documentChanges
           maybeDocs = fmap (fmap documentChangeUri) changes
       in case maybeDocs of
-        Just docs -> (doc ^. L.uri) `elem` docs
+        Just docs -> (doc ^. uri) `elem` docs
         Nothing -> False
     checkChanges req =
       let mMap = req ^. L.params . L.edit . L.changes
@@ -321,18 +337,19 @@ getDocumentEdit doc = do
 -- rsp <- request STextDocumentDocumentSymbol params
 -- @
 -- Note: will skip any messages in between the request and the response.
-request :: SClientMethod m -> MessageParams m -> Session (TResponseMessage m)
+request :: MonadLoggerIO n => SClientMethod m -> MessageParams m -> Session n (TResponseMessage m)
 request m = sendRequest m >=> skipManyTill anyMessage . responseForId m
 
 -- | The same as 'sendRequest', but discard the response.
-request_ :: SClientMethod (m :: Method ClientToServer Request) -> MessageParams m -> Session ()
+request_ :: MonadLoggerIO n => SClientMethod (m :: Method ClientToServer Request) -> MessageParams m -> Session n ()
 request_ p = void . request p
 
 -- | Sends a request to the server. Unlike 'request', this doesn't wait for the response.
 sendRequest
-  :: SClientMethod m -- ^ The request method.
+  :: MonadLoggerIO n
+  => SClientMethod m -- ^ The request method.
   -> MessageParams m -- ^ The request parameters.
-  -> Session (LspId m) -- ^ The id of the request that was sent.
+  -> Session n (LspId m) -- ^ The id of the request that was sent.
 sendRequest method params = do
   idn <- curReqId <$> get
   modify $ \c -> c { curReqId = idn+1 }
@@ -352,9 +369,10 @@ sendRequest method params = do
   return id
 
 -- | Sends a notification to the server.
-sendNotification :: SClientMethod (m :: Method ClientToServer Notification) -- ^ The notification method.
+sendNotification :: MonadLoggerIO n
+                 => SClientMethod (m :: Method ClientToServer Notification) -- ^ The notification method.
                  -> MessageParams m -- ^ The notification parameters.
-                 -> Session ()
+                 -> Session n ()
 -- Open a virtual file if we send a did open text document notification
 sendNotification SMethod_TextDocumentDidOpen params = do
   let n = TNotificationMessage "2.0" SMethod_TextDocumentDidOpen params
@@ -384,13 +402,13 @@ sendNotification method params =
     IsClientEither -> sendMessage (NotMess $ TNotificationMessage "2.0" method params)
 
 -- | Sends a response to the server.
-sendResponse :: (ToJSON (MessageResult m), ToJSON (ErrorData m)) => TResponseMessage m -> Session ()
+sendResponse :: (MonadLoggerIO n, ToJSON (ErrorData m)) => ToJSON (MessageResult m) => TResponseMessage m -> Session n ()
 sendResponse = sendMessage
 
 -- | Returns the initialize response that was received from the server.
 -- The initialize requests and responses are not included the session,
 -- so if you need to test it use this.
-initializeResponse :: Session (TResponseMessage Method_Initialize)
+initializeResponse :: MonadLoggerIO m => Session m (TResponseMessage Method_Initialize)
 initializeResponse = ask >>= (liftIO . readMVar) . initRsp
 
 -- | /Creates/ a new text document. This is different from 'openDoc'
@@ -402,10 +420,12 @@ initializeResponse = ask >>= (liftIO . readMVar) . initRsp
 -- the server that one does exist.
 --
 -- @since 11.0.0.0
-createDoc :: FilePath -- ^ The path to the document to open, __relative to the root directory__.
-          -> T.Text -- ^ The text document's language identifier, e.g. @"haskell"@.
-          -> T.Text -- ^ The content of the text document to create.
-          -> Session TextDocumentIdentifier -- ^ The identifier of the document just created.
+createDoc :: (
+  MonadLoggerIO m
+  ) => FilePath -- ^ The path to the document to open, __relative to the root directory__.
+    -> T.Text -- ^ The text document's language identifier, e.g. @"haskell"@.
+    -> T.Text -- ^ The content of the text document to create.
+    -> Session m TextDocumentIdentifier -- ^ The identifier of the document just created.
 createDoc file languageId contents = do
   dynCaps <- curDynCaps <$> get
   rootDir <- asks rootDir
@@ -443,7 +463,7 @@ createDoc file languageId contents = do
 
 -- | Opens a text document that /exists on disk/, and sends a
 -- textDocument/didOpen notification to the server.
-openDoc :: FilePath -> T.Text -> Session TextDocumentIdentifier
+openDoc :: MonadLoggerIO m => FilePath -> T.Text -> Session m TextDocumentIdentifier
 openDoc file languageId = do
   context <- ask
   let fp = rootDir context </> file
@@ -452,7 +472,7 @@ openDoc file languageId = do
 
 -- | This is a variant of `openDoc` that takes the file content as an argument.
 -- Use this is the file exists /outside/ of the current workspace.
-openDoc' :: FilePath -> T.Text -> T.Text -> Session TextDocumentIdentifier
+openDoc' :: MonadLoggerIO m => FilePath -> T.Text -> T.Text -> Session m TextDocumentIdentifier
 openDoc' file languageId contents = do
   context <- ask
   let fp = rootDir context </> file
@@ -462,35 +482,34 @@ openDoc' file languageId contents = do
   pure $ TextDocumentIdentifier uri
 
 -- | Closes a text document and sends a textDocument/didOpen notification to the server.
-closeDoc :: TextDocumentIdentifier -> Session ()
+closeDoc :: MonadLoggerIO m => TextDocumentIdentifier -> Session m ()
 closeDoc docId = do
   let params = DidCloseTextDocumentParams (TextDocumentIdentifier (docId ^. L.uri))
   sendNotification SMethod_TextDocumentDidClose params
 
 -- | Changes a text document and sends a textDocument/didOpen notification to the server.
-changeDoc :: TextDocumentIdentifier -> [TextDocumentContentChangeEvent] -> Session ()
+changeDoc :: MonadLoggerIO m => TextDocumentIdentifier -> [TextDocumentContentChangeEvent] -> Session m ()
 changeDoc docId changes = do
   verDoc <- getVersionedDoc docId
   let params = DidChangeTextDocumentParams (verDoc & L.version +~ 1) changes
   sendNotification SMethod_TextDocumentDidChange params
 
 -- | Gets the Uri for the file corrected to the session directory.
-getDocUri :: FilePath -> Session Uri
+getDocUri :: MonadLoggerIO m => FilePath -> Session m Uri
 getDocUri file = do
   context <- ask
   let fp = rootDir context </> file
   return $ filePathToUri fp
 
 -- | Waits for diagnostics to be published and returns them.
-waitForDiagnostics :: Session [Diagnostic]
+waitForDiagnostics :: MonadLoggerIO m => Session m [Diagnostic]
 waitForDiagnostics = do
   diagsNot <- skipManyTill anyMessage (message SMethod_TextDocumentPublishDiagnostics)
-  let diags = diagsNot ^. L.params . L.diagnostics
-  return diags
+  return $ diagsNot ^. params . L.diagnostics
 
 -- | The same as 'waitForDiagnostics', but will only match a specific
 -- 'Language.LSP.Types._source'.
-waitForDiagnosticsSource :: String -> Session [Diagnostic]
+waitForDiagnosticsSource :: MonadLoggerIO m => String -> Session m [Diagnostic]
 waitForDiagnosticsSource src = do
   diags <- waitForDiagnostics
   let res = filter matches diags
@@ -504,23 +523,23 @@ waitForDiagnosticsSource src = do
 -- | Expects a 'PublishDiagnosticsNotification' and throws an
 -- 'UnexpectedDiagnostics' exception if there are any diagnostics
 -- returned.
-noDiagnostics :: Session ()
+noDiagnostics :: MonadLoggerIO m => Session m ()
 noDiagnostics = do
   diagsNot <- message SMethod_TextDocumentPublishDiagnostics
-  when (diagsNot ^. L.params . L.diagnostics /= []) $ liftIO $ throw UnexpectedDiagnostics
+  when (diagsNot ^. L.params . L.diagnostics /= []) $ liftIO $ throwIO UnexpectedDiagnostics
 
 -- | Returns the symbols in a document.
-getDocumentSymbols :: TextDocumentIdentifier -> Session (Either [SymbolInformation] [DocumentSymbol])
+getDocumentSymbols :: MonadLoggerIO m => TextDocumentIdentifier -> Session m (Either [SymbolInformation] [DocumentSymbol])
 getDocumentSymbols doc = do
   TResponseMessage _ rspLid res <- request SMethod_TextDocumentDocumentSymbol (DocumentSymbolParams Nothing Nothing doc)
   case res of
     Right (InL xs) -> return (Left xs)
     Right (InR (InL xs)) -> return (Right xs)
     Right (InR (InR _)) -> return (Right [])
-    Left err -> throw (UnexpectedResponseError (SomeLspId $ fromJust rspLid) err)
+    Left err -> throwIO (UnexpectedResponseError (SomeLspId $ fromJust rspLid) err)
 
 -- | Returns the code actions in the specified range.
-getCodeActions :: TextDocumentIdentifier -> Range -> Session [Command |? CodeAction]
+getCodeActions :: MonadLoggerIO m => TextDocumentIdentifier -> Range -> Session m [Command |? CodeAction]
 getCodeActions doc range = do
   ctx <- getCodeActionContextInRange doc range
   rsp <- request SMethod_TextDocumentCodeAction (CodeActionParams Nothing Nothing doc range ctx)
@@ -528,19 +547,19 @@ getCodeActions doc range = do
   case rsp ^. L.result of
     Right (InL xs) -> return xs
     Right (InR _) -> return []
-    Left error -> throw (UnexpectedResponseError (SomeLspId $ fromJust $ rsp ^. L.id) error)
+    Left error -> throwIO (UnexpectedResponseError (SomeLspId $ fromJust $ rsp ^. L.id) error)
 
 -- | Returns all the code actions in a document by
 -- querying the code actions at each of the current
 -- diagnostics' positions.
-getAllCodeActions :: TextDocumentIdentifier -> Session [Command |? CodeAction]
+getAllCodeActions :: forall m. MonadLoggerIO m => TextDocumentIdentifier -> Session m [Command |? CodeAction]
 getAllCodeActions doc = do
   ctx <- getCodeActionContext doc
 
   foldM (go ctx) [] =<< getCurrentDiagnostics doc
 
   where
-    go :: CodeActionContext -> [Command |? CodeAction] -> Diagnostic -> Session [Command |? CodeAction]
+    go :: CodeActionContext -> [Command |? CodeAction] -> Diagnostic -> Session m [Command |? CodeAction]
     go ctx acc diag = do
       TResponseMessage _ rspLid res <- request SMethod_TextDocumentCodeAction (CodeActionParams Nothing Nothing doc (diag ^. L.range) ctx)
 
@@ -549,7 +568,7 @@ getAllCodeActions doc = do
         Right (InL cmdOrCAs) -> pure (acc ++ cmdOrCAs)
         Right (InR _) -> pure acc
 
-getCodeActionContextInRange :: TextDocumentIdentifier -> Range -> Session CodeActionContext
+getCodeActionContextInRange :: MonadLoggerIO m => TextDocumentIdentifier -> Range -> Session m CodeActionContext
 getCodeActionContextInRange doc caRange = do
   curDiags <- getCurrentDiagnostics doc
   let diags = [ d | d@Diagnostic{_range=range} <- curDiags
@@ -569,22 +588,22 @@ getCodeActionContextInRange doc caRange = do
       || pl == sl && po >= so
       || pl == el && po <= eo
 
-getCodeActionContext :: TextDocumentIdentifier -> Session CodeActionContext
+getCodeActionContext :: MonadLoggerIO m => TextDocumentIdentifier -> Session m CodeActionContext
 getCodeActionContext doc = do
   curDiags <- getCurrentDiagnostics doc
   return $ CodeActionContext curDiags Nothing Nothing
 
 -- | Returns the current diagnostics that have been sent to the client.
 -- Note that this does not wait for more to come in.
-getCurrentDiagnostics :: TextDocumentIdentifier -> Session [Diagnostic]
+getCurrentDiagnostics :: MonadLoggerIO m => TextDocumentIdentifier -> Session m [Diagnostic]
 getCurrentDiagnostics doc = fromMaybe [] . Map.lookup (toNormalizedUri $ doc ^. L.uri) . curDiagnostics <$> get
 
 -- | Returns the tokens of all progress sessions that have started but not yet ended.
-getIncompleteProgressSessions :: Session (Set.Set ProgressToken)
+getIncompleteProgressSessions :: MonadLoggerIO m => Session m (Set.Set ProgressToken)
 getIncompleteProgressSessions = curProgressSessions <$> get
 
 -- | Executes a command.
-executeCommand :: Command -> Session ()
+executeCommand :: MonadLoggerIO m => Command -> Session m ()
 executeCommand cmd = do
   let args = decode $ encode $ fromJust $ cmd ^. L.arguments
       execParams = ExecuteCommandParams Nothing (cmd ^. L.command) args
@@ -594,19 +613,19 @@ executeCommand cmd = do
 -- Matching with the specification, if a code action
 -- contains both an edit and a command, the edit will
 -- be applied first.
-executeCodeAction :: CodeAction -> Session ()
+executeCodeAction :: MonadLoggerIO m => CodeAction -> Session m ()
 executeCodeAction action = do
   maybe (return ()) handleEdit $ action ^. L.edit
   maybe (return ()) executeCommand $ action ^. L.command
 
-  where handleEdit :: WorkspaceEdit -> Session ()
+  where handleEdit :: MonadLoggerIO m => WorkspaceEdit -> Session m ()
         handleEdit e =
           -- Its ok to pass in dummy parameters here as they aren't used
           let req = TRequestMessage "" (IdInt 0) SMethod_WorkspaceApplyEdit (ApplyWorkspaceEditParams Nothing e)
             in updateState (FromServerMess SMethod_WorkspaceApplyEdit req)
 
 -- | Adds the current version to the document, as tracked by the session.
-getVersionedDoc :: TextDocumentIdentifier -> Session VersionedTextDocumentIdentifier
+getVersionedDoc :: MonadLoggerIO m => TextDocumentIdentifier -> Session m VersionedTextDocumentIdentifier
 getVersionedDoc (TextDocumentIdentifier uri) = do
   vfs <- vfs <$> get
   let ver = vfs ^? vfsMap . ix (toNormalizedUri uri) . to virtualFileVersion
@@ -615,7 +634,7 @@ getVersionedDoc (TextDocumentIdentifier uri) = do
   return (VersionedTextDocumentIdentifier uri (fromMaybe 0 ver))
 
 -- | Applys an edit to the document and returns the updated document version.
-applyEdit :: TextDocumentIdentifier -> TextEdit -> Session VersionedTextDocumentIdentifier
+applyEdit :: MonadLoggerIO m => TextDocumentIdentifier -> TextEdit -> Session m VersionedTextDocumentIdentifier
 applyEdit doc edit = do
 
   verDoc <- getVersionedDoc doc
@@ -639,7 +658,7 @@ applyEdit doc edit = do
   getVersionedDoc doc
 
 -- | Returns the completions for the position in the document.
-getCompletions :: TextDocumentIdentifier -> Position -> Session [CompletionItem]
+getCompletions :: MonadLoggerIO m => TextDocumentIdentifier -> Position -> Session m [CompletionItem]
 getCompletions doc pos = do
   rsp <- request SMethod_TextDocumentCompletion (CompletionParams doc pos Nothing Nothing Nothing)
 
@@ -649,49 +668,59 @@ getCompletions doc pos = do
     InR (InR _) -> return []
 
 -- | Returns the references for the position in the document.
-getReferences :: TextDocumentIdentifier -- ^ The document to lookup in.
-              -> Position -- ^ The position to lookup.
-              -> Bool -- ^ Whether to include declarations as references.
-              -> Session [Location] -- ^ The locations of the references.
+getReferences :: (
+  MonadLoggerIO m
+  ) => TextDocumentIdentifier -- ^ The document to lookup in.
+    -> Position -- ^ The position to lookup.
+    -> Bool -- ^ Whether to include declarations as references.
+    -> Session m [Location] -- ^ The locations of the references.
 getReferences doc pos inclDecl =
   let ctx = ReferenceContext inclDecl
       params = ReferenceParams doc pos Nothing Nothing ctx
   in absorbNull . getResponseResult <$> request SMethod_TextDocumentReferences params
 
 -- | Returns the declarations(s) for the term at the specified position.
-getDeclarations :: TextDocumentIdentifier -- ^ The document the term is in.
-                -> Position -- ^ The position the term is at.
-                -> Session (Declaration |? [DeclarationLink] |? Null)
+getDeclarations :: (
+  MonadLoggerIO m
+  ) => TextDocumentIdentifier -- ^ The document the term is in.
+    -> Position -- ^ The position the term is at.
+    -> Session m (Declaration |? [DeclarationLink] |? Null)
 getDeclarations doc pos = do
   rsp <- request SMethod_TextDocumentDeclaration (DeclarationParams doc pos Nothing Nothing)
   pure $ getResponseResult rsp
 
 -- | Returns the definition(s) for the term at the specified position.
-getDefinitions :: TextDocumentIdentifier -- ^ The document the term is in.
-               -> Position -- ^ The position the term is at.
-               -> Session (Definition |? [DefinitionLink] |? Null)
+getDefinitions :: (
+  MonadLoggerIO m
+  ) => TextDocumentIdentifier -- ^ The document the term is in.
+    -> Position -- ^ The position the term is at.
+    -> Session m (Definition |? [DefinitionLink] |? Null)
 getDefinitions doc pos = do
   rsp <- request SMethod_TextDocumentDefinition (DefinitionParams doc pos Nothing Nothing)
   pure $ getResponseResult rsp
 
 -- | Returns the type definition(s) for the term at the specified position.
-getTypeDefinitions :: TextDocumentIdentifier -- ^ The document the term is in.
-                   -> Position -- ^ The position the term is at.
-                   -> Session (Definition |? [DefinitionLink] |? Null)
+getTypeDefinitions :: (
+  MonadLoggerIO m
+  ) => TextDocumentIdentifier -- ^ The document the term is in.
+    -> Position -- ^ The position the term is at.
+    -> Session m (Definition |? [DefinitionLink] |? Null)
 getTypeDefinitions doc pos = do
   rsp <- request SMethod_TextDocumentTypeDefinition (TypeDefinitionParams doc pos Nothing Nothing)
   pure $ getResponseResult rsp
 
 -- | Returns the type definition(s) for the term at the specified position.
-getImplementations :: TextDocumentIdentifier -- ^ The document the term is in.
-                   -> Position -- ^ The position the term is at.
-                   -> Session (Definition |? [DefinitionLink] |? Null)
+getImplementations :: (
+  MonadLoggerIO m
+  ) => TextDocumentIdentifier -- ^ The document the term is in.
+    -> Position -- ^ The position the term is at.
+    -> Session m (Definition |? [DefinitionLink] |? Null)
 getImplementations doc pos = do
   rsp <- request SMethod_TextDocumentImplementation (ImplementationParams doc pos Nothing Nothing)
   pure $ getResponseResult rsp
 
 -- | Renames the term at the specified position.
-rename :: TextDocumentIdentifier -> Position -> String -> Session ()
+rename :: MonadLoggerIO m => TextDocumentIdentifier -> Position -> String -> Session m ()
 rename doc pos newName = do
   let params = RenameParams Nothing doc pos (T.pack newName)
   rsp <- request SMethod_TextDocumentRename params
@@ -703,13 +732,13 @@ rename doc pos newName = do
     Nothing -> pure ()
 
 -- | Returns the hover information at the specified position.
-getHover :: TextDocumentIdentifier -> Position -> Session (Maybe Hover)
+getHover :: MonadLoggerIO m => TextDocumentIdentifier -> Position -> Session m (Maybe Hover)
 getHover doc pos =
   let params = HoverParams doc pos Nothing
   in nullToMaybe . getResponseResult <$> request SMethod_TextDocumentHover params
 
 -- | Returns the highlighted occurrences of the term at the specified position
-getHighlights :: TextDocumentIdentifier -> Position -> Session [DocumentHighlight]
+getHighlights :: MonadLoggerIO m => TextDocumentIdentifier -> Position -> Session m [DocumentHighlight]
 getHighlights doc pos =
   let params = DocumentHighlightParams doc pos Nothing Nothing
   in absorbNull . getResponseResult <$> request SMethod_TextDocumentDocumentHighlight params
@@ -723,20 +752,20 @@ getResponseResult rsp =
     Left err -> throw $ UnexpectedResponseError (SomeLspId $ fromJust $ rsp ^. L.id) err
 
 -- | Applies formatting to the specified document.
-formatDoc :: TextDocumentIdentifier -> FormattingOptions -> Session ()
+formatDoc :: MonadLoggerIO m => TextDocumentIdentifier -> FormattingOptions -> Session m ()
 formatDoc doc opts = do
   let params = DocumentFormattingParams Nothing doc opts
   edits <- absorbNull . getResponseResult <$> request SMethod_TextDocumentFormatting params
   applyTextEdits doc edits
 
 -- | Applies formatting to the specified range in a document.
-formatRange :: TextDocumentIdentifier -> FormattingOptions -> Range -> Session ()
+formatRange :: MonadLoggerIO m => TextDocumentIdentifier -> FormattingOptions -> Range -> Session m ()
 formatRange doc opts range = do
   let params = DocumentRangeFormattingParams Nothing doc range opts
   edits <- absorbNull . getResponseResult <$> request SMethod_TextDocumentRangeFormatting params
   applyTextEdits doc edits
 
-applyTextEdits :: TextDocumentIdentifier -> [TextEdit] -> Session ()
+applyTextEdits :: MonadLoggerIO m => TextDocumentIdentifier -> [TextEdit] -> Session m ()
 applyTextEdits doc edits =
   let wEdit = WorkspaceEdit (Just (Map.singleton (doc ^. L.uri) edits)) Nothing Nothing
       -- Send a dummy message to updateState so it can do bookkeeping
@@ -744,33 +773,33 @@ applyTextEdits doc edits =
   in updateState (FromServerMess SMethod_WorkspaceApplyEdit req)
 
 -- | Returns the code lenses for the specified document.
-getCodeLenses :: TextDocumentIdentifier -> Session [CodeLens]
+getCodeLenses :: MonadLoggerIO m => TextDocumentIdentifier -> Session m [CodeLens]
 getCodeLenses tId = do
-    rsp <- request SMethod_TextDocumentCodeLens (CodeLensParams Nothing Nothing tId)
-    pure $ absorbNull $ getResponseResult rsp
+  rsp <- request SMethod_TextDocumentCodeLens (CodeLensParams Nothing Nothing tId)
+  pure $ absorbNull $ getResponseResult rsp
 
 -- | Pass a param and return the response from `prepareCallHierarchy`
-prepareCallHierarchy :: CallHierarchyPrepareParams -> Session [CallHierarchyItem]
+prepareCallHierarchy :: MonadLoggerIO m => CallHierarchyPrepareParams -> Session m [CallHierarchyItem]
 prepareCallHierarchy = resolveRequestWithListResp SMethod_TextDocumentPrepareCallHierarchy
 
-incomingCalls :: CallHierarchyIncomingCallsParams -> Session [CallHierarchyIncomingCall]
+incomingCalls :: MonadLoggerIO m => CallHierarchyIncomingCallsParams -> Session m [CallHierarchyIncomingCall]
 incomingCalls = resolveRequestWithListResp SMethod_CallHierarchyIncomingCalls
 
-outgoingCalls :: CallHierarchyOutgoingCallsParams -> Session [CallHierarchyOutgoingCall]
+outgoingCalls :: MonadLoggerIO m => CallHierarchyOutgoingCallsParams -> Session m [CallHierarchyOutgoingCall]
 outgoingCalls = resolveRequestWithListResp SMethod_CallHierarchyOutgoingCalls
 
 -- | Send a request and receive a response with list.
-resolveRequestWithListResp :: forall (m :: Method ClientToServer Request) a
-                           . (ToJSON (ErrorData m), MessageResult m ~ ([a] |? Null))
+resolveRequestWithListResp :: forall (m :: Method ClientToServer Request) a n
+                           . (ToJSON (ErrorData m), MessageResult m ~ ([a] |? Null), MonadLoggerIO n)
                            => SMethod m
                            -> MessageParams m
-                           -> Session [a]
+                           -> Session n [a]
 resolveRequestWithListResp method params = do
   rsp <- request method params
   pure $ absorbNull $ getResponseResult rsp
 
 -- | Pass a param and return the response from `prepareCallHierarchy`
-getSemanticTokens :: TextDocumentIdentifier -> Session (SemanticTokens |? Null)
+getSemanticTokens :: MonadLoggerIO m => TextDocumentIdentifier -> Session m (SemanticTokens |? Null)
 getSemanticTokens doc = do
   let params = SemanticTokensParams Nothing Nothing doc
   rsp <- request SMethod_TextDocumentSemanticTokensFull params
@@ -780,5 +809,13 @@ getSemanticTokens doc = do
 -- register during the 'Session'.
 --
 -- @since 0.11.0.0
-getRegisteredCapabilities :: Session [SomeRegistration]
+getRegisteredCapabilities :: MonadLoggerIO m => Session m [SomeRegistration]
 getRegisteredCapabilities = Map.elems . curDynCaps <$> get
+
+-- | Returns the result of running a custom LSP command.
+-- For example: rust-analyzer has a command called "rust-analyzer/analyzerStatus"
+--
+-- @since 0.12.0.0
+getCustomRequest :: MonadLoggerIO m => T.Text -> Value -> Session m Value
+getCustomRequest methodName params = Prelude.error "TODO"
+  -- getResponseResult <$> request (SMethod_CustomMethod methodName) params

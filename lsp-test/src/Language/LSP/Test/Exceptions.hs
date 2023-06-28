@@ -1,13 +1,15 @@
+
 module Language.LSP.Test.Exceptions where
 
 import Control.Exception
-import Language.LSP.Protocol.Message
 import Data.Aeson
 import Data.Aeson.Encode.Pretty
 import Data.Algorithm.Diff
 import Data.Algorithm.DiffOutput
-import Data.List
 import qualified Data.ByteString.Lazy.Char8 as B
+import Data.List
+import Language.LSP.Protocol.Message
+
 
 -- | An exception that can be thrown during a 'Haskell.LSP.Test.Session.Session'
 data SessionException = Timeout (Maybe FromServerMessage)

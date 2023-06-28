@@ -1,13 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
+
 import Control.Applicative.Combinators
 import Control.Monad.IO.Class
-import Language.LSP.Test
-import Language.LSP.Protocol.Types
+import Control.Monad.Logger
 import Language.LSP.Protocol.Message
+import Language.LSP.Protocol.Types
+import Language.LSP.Test
+import System.Process
 
-main = runSession "lsp-demo-reactor-server" fullCaps "test/data/" $ do
+
+main = runStdoutLoggingT $ runSession (shell "sleep 999999999") fullCaps "test/data/" $ do
   doc <- openDoc "Rename.hs" "haskell"
-  
+
   -- Use your favourite favourite combinators.
   skipManyTill loggingNotification (count 1 publishDiagnosticsNotification)
 
@@ -18,4 +22,3 @@ main = runSession "lsp-demo-reactor-server" fullCaps "test/data/" $ do
 
   -- Or use one of the helper functions
   getDocumentSymbols doc >>= liftIO . print
-

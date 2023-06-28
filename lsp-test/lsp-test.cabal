@@ -61,14 +61,18 @@ library
     , lens
     , lsp                   ^>=2.0
     , lsp-types             ^>=2.0
+    , monad-logger
     , mtl                   <2.4
     , parser-combinators    >=1.2
     , process               >=1.6
+    , retry
     , row-types
     , some
     , text
     , time
     , transformers
+    , unliftio
+    , unliftio-core
 
   if os(windows)
     build-depends: Win32
@@ -79,8 +83,8 @@ library
     Language.LSP.Test.Compat
     Language.LSP.Test.Decoding
     Language.LSP.Test.Exceptions
-    Language.LSP.Test.Files
     Language.LSP.Test.Parsing
+    Language.LSP.Test.Process
     Language.LSP.Test.Server
     Language.LSP.Test.Session
 
@@ -104,6 +108,7 @@ test-suite tests
     , lens
     , lsp           ^>=2.0
     , lsp-test
+    , monad-logger
     , mtl           <2.4
     , parser-combinators
     , process
@@ -123,6 +128,7 @@ test-suite func-test
     , lens
     , lsp
     , lsp-test
+    , monad-logger
     , parser-combinators
     , process
     , unliftio
@@ -136,7 +142,9 @@ test-suite example
   build-depends:
     , base
     , lsp-test
+    , monad-logger
     , parser-combinators
+    , process
   build-tool-depends: lsp:lsp-demo-reactor-server
 
 benchmark simple-bench
@@ -151,4 +159,3 @@ benchmark simple-bench
     , lsp
     , lsp-test
     , process
-
