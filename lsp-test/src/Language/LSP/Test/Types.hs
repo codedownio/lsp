@@ -50,9 +50,12 @@ import UnliftIO.Exception
 newtype Session m a = Session { unwrapSession :: ReaderT SessionContext m a }
   deriving (Functor, Applicative, Alternative, Monad, MonadIO, MonadLogger, MonadLoggerIO, MonadThrow, MonadReader SessionContext, MonadUnliftIO, MonadMask, MonadCatch)
 
+
+#if !MIN_VERSION_monad_logger(0,3,40)
 instance (Alternative m) => Alternative (LoggingT m) where
   empty = LoggingT (\_ -> empty)
   LoggingT x <|> LoggingT y = LoggingT (\f -> x f <|> y f)
+#endif
 
 #if __GLASGOW_HASKELL__ >= 806
 instance MonadIO m => MonadFail (Session m) where
