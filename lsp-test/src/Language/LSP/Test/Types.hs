@@ -48,7 +48,7 @@ import UnliftIO.Exception
 -- 'Language.LSP.Test.sendNotification'.
 
 newtype Session m a = Session { unwrapSession :: ReaderT SessionContext m a }
-  deriving (Functor, Applicative, Alternative, Monad, MonadIO, MonadLogger, MonadLoggerIO, MonadThrow, MonadReader SessionContext, MonadUnliftIO, MonadMask, MonadCatch)
+  deriving (Functor, Applicative, Alternative, Monad, MonadIO, MonadLogger, MonadLoggerIO, MonadThrow, MonadReader SessionContext, MonadUnliftIO, MonadMask, MonadCatch, MonadTrans)
 
 
 #if !MIN_VERSION_monad_logger(0,3,40)
