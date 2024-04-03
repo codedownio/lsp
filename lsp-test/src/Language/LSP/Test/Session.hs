@@ -23,6 +23,7 @@ module Language.LSP.Test.Session (
   ) where
 
 import Control.Lens hiding (Empty)
+import Control.Monad
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Except
 import Control.Monad.IO.Unlift
