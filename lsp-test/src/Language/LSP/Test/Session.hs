@@ -67,13 +67,6 @@ runSession' :: forall m a. (
     -> Session m a
     -> m a
 runSession' servIn servOut mServerProc config caps rootDir exitServer session = initVFS' $ \vfs -> do
-  liftIO $ hSetBuffering servIn  NoBuffering
-  liftIO $ hSetBuffering servOut NoBuffering
-
-  -- Make sure that we don’t get any newline conversion or weird encoding issues.
-  liftIO $ hSetBinaryMode servIn True
-  liftIO $ hSetBinaryMode servOut True
-
   context <- SessionContext
     servIn
     <$> canonicalizePath rootDir

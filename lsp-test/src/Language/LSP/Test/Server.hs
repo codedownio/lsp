@@ -23,10 +23,18 @@ withServer baseCreateProcess logStdErr modifyCreateProcess f = do
         }
 
   withCreateProcess (modifyCreateProcess createProc) $ \(Just serverIn) (Just serverOut) (Just serverErr) serverProc -> do
+    liftIO $ hSetBuffering serverIn NoBuffering
+    liftIO $ hSetEncoding serverIn utf8
+
+    liftIO $ hSetBuffering serverOut NoBuffering
+    liftIO $ hSetEncoding serverOut utf8
+
+    -- Stderr is used for normal logging, so line buffering is fine (and more efficient)
+    liftIO $ hSetBuffering serverErr LineBuffering
+    liftIO $ hSetEncoding serverErr utf8
+
     -- Need to continuously consume stderr else it gets blocked
     -- Can't pass NoStream either to std_err
-    liftIO $ hSetBuffering serverErr NoBuffering
-    liftIO $ hSetBinaryMode serverErr True
     let errSinkThread = forever $ liftIO (hGetLine serverErr) >>= when logStdErr . logDebugN . T.pack
     withAsync errSinkThread $ \_ -> do
       f serverIn serverOut serverProc
