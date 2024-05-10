@@ -29,8 +29,10 @@ import Control.Monad.Except
 import Control.Monad.IO.Unlift
 import Control.Monad.Logger
 import Control.Monad.Reader
+import Data.Aeson.Encode.Pretty
 import Data.String.Interpolate
 import qualified Data.Text as T
+import qualified Data.Text.Lazy.Builder as T
 import Language.LSP.Protocol.Lens as L
 import Language.LSP.Protocol.Message
 import Language.LSP.Protocol.Types
@@ -105,7 +107,11 @@ forwardServerMessages serverOut = forever $ do
 
   msg <- modifyMVar (requestMap ctx) (\reqMap -> pure (decodeFromServerMsg reqMap msgBytes))
 
-  logMsg LogServer msg
+  case msg of
+    FromServerMess SMethod_WindowLogMessage (TNotificationMessage { _params=(LogMessageParams level text) }) ->
+      -- Give a more concise log message for window/logMessage notifications
+      logMsg LogServer ("window/logMessage: (" <> T.fromText (T.pack (show level)) <> ") " <> T.fromText text)
+    _ -> logMsg LogServer (encodePrettyToTextBuilder msg)
 
   catch (updateState msg) $ \(e :: SomeException) -> do
     logErrorN [i|Exception when updating state in response to message #{msg}: #{e}|]
