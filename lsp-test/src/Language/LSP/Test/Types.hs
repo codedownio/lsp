@@ -100,6 +100,7 @@ data SessionContext = SessionContext {
   , messageChan :: Chan FromServerMessage
   , requestMap :: MVar RequestMap
   , initRsp :: MVar (TResponseMessage 'Method_Initialize)
+  , isShuttingDown :: MVar Bool
   , config :: SessionConfig
   , sessionCapabilities :: ClientCapabilities
   , sessionState :: MVar SessionState

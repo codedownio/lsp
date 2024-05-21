@@ -75,13 +75,16 @@ runSession' servIn servOut mServerProc config caps rootDir exitServer session = 
     <*> newChan
     <*> newMVar newRequestMap
     <*> newEmptyMVar
+    <*> newMVar False
     <*> pure config
     <*> pure caps
     <*> newMVar (SessionState 0 vfs mempty False Nothing mempty mempty)
 
-  let doShutdown = timeout (messageTimeout config * 10^(6 :: Int)) (runReaderT (unwrapSession exitServer) context) >>= \case
-        Just () -> return ()
-        Nothing -> logErrorN "Timeout when shutting down server"
+  let doShutdown = do
+        modifyMVar_ (isShuttingDown context) (const $ pure True)
+        timeout (messageTimeout config * 10^(6 :: Int)) (runReaderT (unwrapSession exitServer) context) >>= \case
+          Just () -> return ()
+          Nothing -> logErrorN "Timeout when shutting down server"
 
   flip finally (whenJust mServerProc (teardownProcess config servIn servOut)) $
     withAsync (flip runReaderT context $ forwardServerMessages servOut) $ \_ ->
@@ -116,8 +119,11 @@ forwardServerMessages serverOut = forever $ do
   catch (updateState msg) $ \(e :: SomeException) -> do
     logErrorN [i|Exception when updating state in response to message #{msg}: #{e}|]
 
-  catch (respond msg) $ \(e :: SomeException) -> do
-    logErrorN [i|Exception when doing automatic responses in response to message #{msg}: #{e}|]
+  -- Auto-respond to some message types (unless shutdown command has been sent)
+  withMVar (isShuttingDown ctx) $ \shuttingDown ->
+    unless (shuttingDown) $
+      catch (autoRespond msg) $ \(e :: SomeException) -> do
+        logErrorN [i|Exception when doing automatic responses in response to message #{msg}: #{e}|]
 
   writeChan (messageChan ctx) msg
 
@@ -125,9 +131,10 @@ whenJust :: Monad m => Maybe t -> (t -> m ()) -> m ()
 whenJust Nothing _ = return ()
 whenJust (Just x) f = f x
 
-respond :: (MonadLoggerIO m, MonadReader SessionContext m) => FromServerMessage -> m ()
-respond (FromServerMess SMethod_WindowWorkDoneProgressCreate req) =
+-- | Automatically respond to some common message types
+autoRespond :: (MonadLoggerIO m, MonadReader SessionContext m) => FromServerMessage -> m ()
+autoRespond (FromServerMess SMethod_WindowWorkDoneProgressCreate req) =
   sendMessage $ TResponseMessage "2.0" (Just $ req ^. L.id) (Right Null)
-respond (FromServerMess SMethod_WorkspaceApplyEdit r) = do
+autoRespond (FromServerMess SMethod_WorkspaceApplyEdit r) = do
   sendMessage $ TResponseMessage "2.0" (Just $ r ^. L.id) (Right $ ApplyWorkspaceEditResult True Nothing Nothing)
-respond _ = pure ()
+autoRespond _ = pure ()
