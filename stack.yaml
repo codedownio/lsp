@@ -7,7 +7,9 @@ packages:
 - ./lsp-test
 
 nix:
-  packages: [icu]
+  packages:
+  - icu
+  - zlib
 
 extra-deps:
 - co-log-core-0.3.2.0
