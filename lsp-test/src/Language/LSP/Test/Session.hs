@@ -38,10 +38,10 @@ import Control.Concurrent hiding (yield)
 import Control.Exception
 import Control.Lens hiding (List, Empty)
 import Control.Monad
-import Control.Monad.IO.Class
-import Control.Monad.Trans.Class
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Except
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
 #if __GLASGOW_HASKELL__ == 806
 import Control.Monad.Fail
 #endif
@@ -349,7 +349,7 @@ updateStateC = awaitForever $ \msg -> do
       sendMessage $ TResponseMessage "2.0" (Just $ r ^. L.id) $
         if null errs
         then Right configs
-        else Left $ TResponseError (InL LSPErrorCodes_RequestFailed) ("No configuration for requested sections: " <> T.pack (show errs)) Nothing
+        else Left $ ResponseError (InL LSPErrorCodes_RequestFailed) ("No configuration for requested sections: " <> T.pack (show errs)) Nothing
     _ -> pure ()
   unless (
     (ignoringLogNotifications state && isLogNotification msg)

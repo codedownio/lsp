@@ -17,7 +17,7 @@ data SessionException
   | ReplayOutOfOrder FromServerMessage [FromServerMessage]
   | UnexpectedDiagnostics
   | IncorrectApplyEditRequest String
-  | forall m. Show (ErrorData m) => UnexpectedResponseError (LspId m) (TResponseError m)
+  | forall m. Show (ErrorData m) => UnexpectedResponseError (LspId m) ResponseError
   | UnexpectedServerTermination
   | IllegalInitSequenceMessage FromServerMessage
   | MessageSendError Value IOError
