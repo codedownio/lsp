@@ -431,7 +431,71 @@ type family MessageResult (m ::  Method f t) where
 -- | Maps a LSP method to its error data type.
 type ErrorData :: forall f t . Method f t -> Kind.Type
 type family ErrorData (m ::  Method f t) where
-  ErrorData _ = Aeson.Value
+  ErrorData Method_TextDocumentImplementation = Aeson.Value
+  ErrorData Method_TextDocumentTypeDefinition = Aeson.Value
+  ErrorData Method_WorkspaceWorkspaceFolders = Aeson.Value
+  ErrorData Method_WorkspaceConfiguration = Aeson.Value
+  ErrorData Method_TextDocumentDocumentColor = Aeson.Value
+  ErrorData Method_TextDocumentColorPresentation = Aeson.Value
+  ErrorData Method_TextDocumentFoldingRange = Aeson.Value
+  ErrorData Method_TextDocumentDeclaration = Aeson.Value
+  ErrorData Method_TextDocumentSelectionRange = Aeson.Value
+  ErrorData Method_WindowWorkDoneProgressCreate = Aeson.Value
+  ErrorData Method_TextDocumentPrepareCallHierarchy = Aeson.Value
+  ErrorData Method_CallHierarchyIncomingCalls = Aeson.Value
+  ErrorData Method_CallHierarchyOutgoingCalls = Aeson.Value
+  ErrorData Method_TextDocumentSemanticTokensFull = Aeson.Value
+  ErrorData Method_TextDocumentSemanticTokensFullDelta = Aeson.Value
+  ErrorData Method_TextDocumentSemanticTokensRange = Aeson.Value
+  ErrorData Method_WorkspaceSemanticTokensRefresh = Aeson.Value
+  ErrorData Method_WindowShowDocument = Aeson.Value
+  ErrorData Method_TextDocumentLinkedEditingRange = Aeson.Value
+  ErrorData Method_WorkspaceWillCreateFiles = Aeson.Value
+  ErrorData Method_WorkspaceWillRenameFiles = Aeson.Value
+  ErrorData Method_WorkspaceWillDeleteFiles = Aeson.Value
+  ErrorData Method_TextDocumentMoniker = Aeson.Value
+  ErrorData Method_TextDocumentPrepareTypeHierarchy = Aeson.Value
+  ErrorData Method_TypeHierarchySupertypes = Aeson.Value
+  ErrorData Method_TypeHierarchySubtypes = Aeson.Value
+  ErrorData Method_TextDocumentInlineValue = Aeson.Value
+  ErrorData Method_WorkspaceInlineValueRefresh = Aeson.Value
+  ErrorData Method_TextDocumentInlayHint = Aeson.Value
+  ErrorData Method_InlayHintResolve = Aeson.Value
+  ErrorData Method_WorkspaceInlayHintRefresh = Aeson.Value
+  ErrorData Method_TextDocumentDiagnostic = Aeson.Value
+  ErrorData Method_WorkspaceDiagnostic = Aeson.Value
+  ErrorData Method_WorkspaceDiagnosticRefresh = Aeson.Value
+  ErrorData Method_ClientRegisterCapability = Aeson.Value
+  ErrorData Method_ClientUnregisterCapability = Aeson.Value
+  ErrorData Method_Initialize = Aeson.Value
+  ErrorData Method_Shutdown = Aeson.Value
+  ErrorData Method_WindowShowMessageRequest = Aeson.Value
+  ErrorData Method_TextDocumentWillSaveWaitUntil = Aeson.Value
+  ErrorData Method_TextDocumentCompletion = Aeson.Value
+  ErrorData Method_CompletionItemResolve = Aeson.Value
+  ErrorData Method_TextDocumentHover = Aeson.Value
+  ErrorData Method_TextDocumentSignatureHelp = Aeson.Value
+  ErrorData Method_TextDocumentDefinition = Aeson.Value
+  ErrorData Method_TextDocumentReferences = Aeson.Value
+  ErrorData Method_TextDocumentDocumentHighlight = Aeson.Value
+  ErrorData Method_TextDocumentDocumentSymbol = Aeson.Value
+  ErrorData Method_TextDocumentCodeAction = Aeson.Value
+  ErrorData Method_CodeActionResolve = Aeson.Value
+  ErrorData Method_WorkspaceSymbol = Aeson.Value
+  ErrorData Method_WorkspaceSymbolResolve = Aeson.Value
+  ErrorData Method_TextDocumentCodeLens = Aeson.Value
+  ErrorData Method_CodeLensResolve = Aeson.Value
+  ErrorData Method_WorkspaceCodeLensRefresh = Aeson.Value
+  ErrorData Method_TextDocumentDocumentLink = Aeson.Value
+  ErrorData Method_DocumentLinkResolve = Aeson.Value
+  ErrorData Method_TextDocumentFormatting = Aeson.Value
+  ErrorData Method_TextDocumentRangeFormatting = Aeson.Value
+  ErrorData Method_TextDocumentOnTypeFormatting = Aeson.Value
+  ErrorData Method_TextDocumentRename = Aeson.Value
+  ErrorData Method_TextDocumentPrepareRename = Aeson.Value
+  ErrorData Method_WorkspaceExecuteCommand = Aeson.Value
+  ErrorData Method_WorkspaceApplyEdit = Aeson.Value
+  ErrorData (Method_CustomMethod s) = Aeson.Value
 
 -- | Maps a LSP method to its registration options type.
 type RegistrationOptions :: forall f t . Method f t -> Kind.Type
