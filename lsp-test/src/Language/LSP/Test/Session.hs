@@ -134,9 +134,9 @@ runSession' serverIn serverOut mServerProc _serverHandler config caps rootDir ex
 
   flip finally (whenJust mServerProc (teardownProcess config serverIn serverOut)) $
     withAsync (flip runReaderT context $ forwardServerMessages serverOut) $ \_ ->
-      flip finally doShutdown $
-        flip withException (\(e :: SomeException) -> logErrorN ("Exception in session: " <> T.pack (show e))) $ do
-          runReaderT (unwrapSession session) context
+    flip finally doShutdown $
+    flip withException (\(e :: SomeException) -> logErrorN ("Exception in session: " <> T.pack (show e))) $
+    runReaderT (unwrapSession session) context
 
 teardownProcess :: MonadLoggerIO m => SessionConfig -> Handle -> Handle -> ProcessHandle -> m ()
 teardownProcess config servIn servOut sp = do
