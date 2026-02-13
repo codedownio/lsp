@@ -88,6 +88,7 @@ instance Default SessionConfig where
 data SessionContext = SessionContext
   {
     serverIn :: Handle
+  , serverInLock :: MVar () -- ^ Lock to prevent concurrent writes to serverIn
   , rootDir :: FilePath
   , messageChan :: Chan FromServerMessage -- ^ Where all messages come through
   , requestMap :: MVar RequestMap

@@ -115,8 +115,11 @@ runSession' serverIn serverOut mServerProc _serverHandler config caps rootDir ex
 
   stateVar <- newMVar initState
 
+  serverInLockVar <- newMVar ()
+
   let context = SessionContext
         serverIn
+        serverInLockVar
         absRootDir
         messageChan
         reqMap

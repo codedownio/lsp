@@ -14,13 +14,17 @@ import Language.LSP.Test.Decoding
 import Language.LSP.Test.Exceptions
 import Language.LSP.Test.Types
 import UnliftIO.Exception (throwIO)
+import UnliftIO.MVar (withMVar)
 
 
 sendMessage :: (MonadLoggerIO m, MonadReader SessionContext m, ToJSON a) => a -> m ()
 sendMessage msg = do
-  h <- serverIn <$> ask
+  ctx <- ask
+  let h = serverIn ctx
+  let lock = serverInLock ctx
   logMsg LogClient msg
-  liftIO $ B.hPut h (addHeader $ encode msg) `catch` (liftIO . throwIO . MessageSendError (toJSON msg))
+  liftIO $ withMVar lock $ \_ ->
+    B.hPut h (addHeader $ encode msg) `catch` (throwIO . MessageSendError (toJSON msg))
 
 -- | Logs the message if the config specified it
 logMsg :: (ToJSON a, MonadLoggerIO m, MonadReader SessionContext m)
