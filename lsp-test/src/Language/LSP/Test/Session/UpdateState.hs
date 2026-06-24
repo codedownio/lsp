@@ -25,7 +25,6 @@ import Data.List (groupBy, sortBy)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, mapMaybe, fromJust)
 import qualified Data.Set as Set
-import UnliftIO.Concurrent (readMVar, modifyMVar, modifyMVar_)
 import qualified Data.Text.IO as T
 import qualified Language.LSP.Protocol.Lens as L
 import Language.LSP.Protocol.Message as LSP
@@ -33,6 +32,7 @@ import Language.LSP.Protocol.Types as LSP
 import Language.LSP.Test.Session.Core
 import Language.LSP.Test.Types
 import Language.LSP.VFS
+import UnliftIO.Concurrent (readMVar, modifyMVar, modifyMVar_)
 
 
 updateState :: (MonadLoggerIO m, MonadUnliftIO m, MonadReader SessionContext m)
@@ -52,12 +52,14 @@ updateState (FromServerMess SMethod_ClientRegisterCapability req) = do
   let newRegs = (\sr@(SomeRegistration r) -> (r ^. L.id, sr)) <$> regs
   modifyStatePure_ $ \s ->
     s { curDynCaps = Map.union (Map.fromList newRegs) (curDynCaps s) }
+  sendMessage $ TResponseMessage "2.0" (Just $ req ^. L.id) (Right Null)
 
 updateState (FromServerMess SMethod_ClientUnregisterCapability req) = do
   let unRegs = (^. L.id) <$> req ^. L.params . L.unregisterations
   modifyStatePure_ $ \s ->
     let newCurDynCaps = foldr' Map.delete (curDynCaps s) unRegs
     in s { curDynCaps = newCurDynCaps }
+  sendMessage $ TResponseMessage "2.0" (Just $ req ^. L.id) (Right Null)
 
 updateState (FromServerMess SMethod_TextDocumentPublishDiagnostics n) = do
   let diags = n ^. L.params . L.diagnostics
