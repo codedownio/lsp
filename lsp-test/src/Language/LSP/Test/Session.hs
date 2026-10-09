@@ -132,13 +132,9 @@ runSession' serverIn serverOut mServerProc _serverHandler config caps rootDir ex
   let doShutdown = do
         modifyMVar_ (isShuttingDown context) (const $ pure True)
 
-        -- Two things make this fiddlier than a 'timeout'. This runs as the cleanup of the
-        -- 'finally' below, and unliftio runs cleanups under uninterruptibleMask, so the async
-        -- exception 'timeout' depends on can never be delivered -- a server that doesn't
-        -- answer `shutdown` would wedge the session forever. And forkIO inherits the masking
-        -- state, so a thread spawned here would be uninterruptible too, and cancelling it at
-        -- the end would block until it finished on its own. Hence: fork both sides with the
-        -- mask lifted, and pick whichever finishes first.
+        -- Not 'timeout': this is a 'finally' cleanup, which unliftio runs under
+        -- uninterruptibleMask, so the async exception could never be delivered. Unmask both
+        -- threads too, or they inherit the mask and can't be cancelled either.
         let timeoutUs = messageTimeout config * 10^(6 :: Int)
         withAsyncWithUnmask (\unmask -> unmask $ threadDelay timeoutUs) $ \timer ->
           withAsyncWithUnmask (\unmask -> unmask $ runReaderT (unwrapSession exitServer) context) $ \shuttingDown ->
@@ -167,11 +163,8 @@ forwardServerMessages serverOut = forever $ do
 
   msgBytes <- liftIO $ getNextMessage serverOut
 
-  -- A message we can't decode mustn't take this thread down with it. If it does, nothing is
-  -- left reading the server's output: every later response goes unnoticed, including the one
-  -- to `shutdown`, and the session hangs in teardown instead of failing. Servers really do
-  -- send things we can't decode -- R's languageserver answers `shutdown` with `"result": []`
-  -- where the spec says `null` -- and one of those shouldn't sink the whole session.
+  -- Skip what we can't decode. If this thread dies, nothing reads the server's output any
+  -- more and the session hangs in teardown waiting for the shutdown response.
   tryAny (modifyMVar (requestMap ctx) (\reqMap -> pure (decodeFromServerMsg reqMap msgBytes))) >>= \case
     Left e -> logErrorN [i|Couldn't decode a message from the server, skipping it: #{e}|]
     Right msg -> handleServerMessage ctx msg
