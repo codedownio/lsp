@@ -131,9 +131,16 @@ runSession' serverIn serverOut mServerProc _serverHandler config caps rootDir ex
 
   let doShutdown = do
         modifyMVar_ (isShuttingDown context) (const $ pure True)
-        timeout (messageTimeout config * 10^(6 :: Int)) (runReaderT (unwrapSession exitServer) context) >>= \case
-          Just () -> return ()
-          Nothing -> logErrorN "Timeout when shutting down server"
+
+        -- Not 'timeout': this is a 'finally' cleanup, which unliftio runs under
+        -- uninterruptibleMask, so the async exception could never be delivered. Unmask both
+        -- threads too, or they inherit the mask and can't be cancelled either.
+        let timeoutUs = messageTimeout config * 10^(6 :: Int)
+        withAsyncWithUnmask (\unmask -> unmask $ threadDelay timeoutUs) $ \timer ->
+          withAsyncWithUnmask (\unmask -> unmask $ runReaderT (unwrapSession exitServer) context) $ \shuttingDown ->
+            waitEither timer shuttingDown >>= \case
+              Right () -> return ()
+              Left () -> logErrorN "Timeout when shutting down server"
 
   flip finally (whenJust mServerProc (teardownProcess config serverIn serverOut)) $
     withAsync (flip runReaderT context $ forwardServerMessages serverOut) $ \_ ->
@@ -156,8 +163,14 @@ forwardServerMessages serverOut = forever $ do
 
   msgBytes <- liftIO $ getNextMessage serverOut
 
-  msg <- modifyMVar (requestMap ctx) (\reqMap -> pure (decodeFromServerMsg reqMap msgBytes))
+  -- Skip what we can't decode. If this thread dies, nothing reads the server's output any
+  -- more and the session hangs in teardown waiting for the shutdown response.
+  tryAny (modifyMVar (requestMap ctx) (\reqMap -> pure (decodeFromServerMsg reqMap msgBytes))) >>= \case
+    Left e -> logErrorN [i|Couldn't decode a message from the server, skipping it: #{e}|]
+    Right msg -> handleServerMessage ctx msg
 
+handleServerMessage :: (MonadLoggerIO m, MonadUnliftIO m, MonadReader SessionContext m) => SessionContext -> FromServerMessage -> m ()
+handleServerMessage ctx msg = do
   case msg of
     FromServerMess SMethod_WindowLogMessage (TNotificationMessage { _params=(LogMessageParams level text) }) ->
       -- Give a more concise log message for window/logMessage notifications
